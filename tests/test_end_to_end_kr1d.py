@@ -37,7 +37,8 @@ def test_dykstra_fast_forward_advantage() -> None:
     """
     # Step 1 – Data
     num_particles: int = 500
-    _, z = generate_crescent_data_2d(num_particles, seed=43)
+    seed: int = 44
+    _, z = generate_crescent_data_2d(num_particles, seed=seed)
     z1: np.ndarray = z[:, 0]
 
     # Step 2 – Model
@@ -110,8 +111,12 @@ def test_dykstra_fast_forward_advantage() -> None:
     plotter.plot_outer_iteration_solver_comparison(
         vanilla_results=history_vanilla["projection_results"],
         fast_forward_results=history_fast["projection_results"],
-        suptitle="KR1D PGD Inner Dykstra Error",
-        filename_prefix="kr1d_outer_iter_comparison",
+        suptitle=(
+            f"KR1D PGD Inner Dykstra Error "
+        ),
+        filename_prefix=(
+            f"kr1d_outer_iter_comparison_SEED={seed}_M={num_particles}"
+        ),
         show=False,
     )
 
