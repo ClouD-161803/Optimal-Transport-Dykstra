@@ -9,4 +9,12 @@ from .data_generator import generate_crescent_data_2d
 from .hermite import hermite_polynomial
 from .optimal_transport import HermiteBasis, KRMap1D
 from .pgd_solver import ProjectedGradientDescent
-from .plotter import ProjectPlotter
+from .plotter import (
+    AXIS_LABEL_FONT_SIZE,
+    LEGEND_FONT_SIZE,
+    SUPTITLE_FONT_SIZE,
+    TICK_LABEL_FONT_SIZE,
+    TITLE_FONT_SIZE,
+    DistributionPlotter,
+    DykstraPlotter,
+)

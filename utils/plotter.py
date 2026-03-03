@@ -1,9 +1,9 @@
 """Plotting utilities for the Dykstra projection project.
 
-Provides a central ``ProjectPlotter`` class whose methods produce the
-standard figures used across benchmarks and experiments.  New plot types
-should be added as methods on this class so that styling remains
-consistent throughout the project.
+Provides dedicated plotter classes for disjoint plotting domains:
+
+* ``DykstraPlotter`` for Dykstra/PGD convergence diagnostics.
+* ``DistributionPlotter`` for sample-distribution visualisations.
 """
 
 from __future__ import annotations
@@ -18,8 +18,35 @@ import numpy as np
 
 from .projection_result import ProjectionResult
 
+SUPTITLE_FONT_SIZE = 14
+TITLE_FONT_SIZE = 12
+AXIS_LABEL_FONT_SIZE = 11
+TICK_LABEL_FONT_SIZE = 10
+LEGEND_FONT_SIZE = 10
 
-class ProjectPlotter:
+
+class _BasePlotter:
+    """Shared plotting base with output handling and common styling."""
+
+    def __init__(self, output_dir: str, dpi: int = 150) -> None:
+        self.output_dir = output_dir
+        self.dpi = dpi
+        os.makedirs(self.output_dir, exist_ok=True)
+
+    @staticmethod
+    def _style_axis(
+        ax: Axes,
+        title: str,
+        xlabel: str,
+        ylabel: str,
+    ) -> None:
+        ax.set_title(title, fontsize=TITLE_FONT_SIZE)
+        ax.set_xlabel(xlabel, fontsize=AXIS_LABEL_FONT_SIZE)
+        ax.set_ylabel(ylabel, fontsize=AXIS_LABEL_FONT_SIZE)
+        ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
+
+
+class DykstraPlotter(_BasePlotter):
     """Reusable plotter for Dykstra projection benchmarks and experiments.
 
     Parameters
@@ -31,11 +58,6 @@ class ProjectPlotter:
         Resolution for saved figures (default 150).
     """
 
-    def __init__(self, output_dir: str, dpi: int = 150) -> None:
-        self.output_dir = output_dir
-        self.dpi = dpi
-        os.makedirs(self.output_dir, exist_ok=True)
-
     # Public API
 
     def plot_convergence_comparison(
@@ -43,7 +65,6 @@ class ProjectPlotter:
         results: Sequence[ProjectionResult],
         labels: Sequence[str],
         max_iter: int,
-        suptitle: str | None = None,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -63,8 +84,6 @@ class ProjectPlotter:
         max_iter : int
             Number of Dykstra cycles that were run (used to build the
             iteration axis).
-        suptitle : str, optional
-            Overall figure title.
         filename : str, optional
             If given the figure is saved to ``output_dir / filename``.
         show : bool, optional
@@ -87,10 +106,7 @@ class ProjectPlotter:
         for ax, label, result in zip(axes, labels, results):
             self._draw_convergence_panel(ax, result, iters, label)
 
-        if suptitle is not None:
-            fig.suptitle(suptitle, fontsize=13)
-
-        plt.tight_layout()
+        fig.tight_layout()
 
         if filename is not None:
             fig.savefig(
@@ -106,7 +122,6 @@ class ProjectPlotter:
         self,
         vanilla_results: Sequence[ProjectionResult],
         fast_forward_results: Sequence[ProjectionResult],
-        suptitle: str = "Dykstra Squared Error by Outer Iteration",
         filename_prefix: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -149,8 +164,7 @@ class ProjectPlotter:
                 f"Outer {outer_idx + 1} — Fast-Forward Dykstra",
             )
 
-        fig.suptitle(suptitle, fontsize=13)
-        fig.tight_layout(rect=(0, 0, 1, 0.97))
+        fig.tight_layout()
 
         if filename_prefix is not None:
             fig.savefig(
@@ -162,7 +176,7 @@ class ProjectPlotter:
             plt.show()
 
         return fig
-    
+
     # Internal helpers
 
     @staticmethod
@@ -240,8 +254,76 @@ class ProjectPlotter:
                 color=colour, markersize=3, label=label_arg,
             )
 
-        ax.set_title(title)
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("Squared error")
-        ax.legend()
+        self._style_axis(
+            ax=ax,
+            title=title,
+            xlabel="Iteration",
+            ylabel="Squared error",
+        )
+        ax.legend(fontsize=LEGEND_FONT_SIZE)
         ax.grid(True, which="both", alpha=0.3)
+
+
+class DistributionPlotter(_BasePlotter):
+    """Plotter for sample-distribution visualisations.
+    """
+
+    def plot_distributions(
+        self,
+        zeta: np.ndarray,
+        z: np.ndarray,
+        seed: int,
+        m: int,
+        filename: str | None = None,
+        show: bool = True,
+    ) -> Figure:
+        """Plot and save standard-normal and crescent sample distributions."""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        self._draw_distribution_panel(
+            ax=ax1,
+            samples=zeta,
+            title=r"Standard normal $\mathcal{N}(0, I_2)$",
+            xlabel="$z_1$",
+            ylabel="$z_2$",
+            color="blue",
+        )
+        self._draw_distribution_panel(
+            ax=ax2,
+            samples=z,
+            title="Crescent distribution",
+            xlabel="$x_1$",
+            ylabel="$x_2$",
+            color="red",
+        )
+
+        fig.tight_layout()
+
+        out_name = filename or f"synthetic_distribution_SEED={seed}_M={m}.png"
+        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
+
+        if show:
+            plt.show()
+
+        return fig
+
+    def _draw_distribution_panel(
+        self,
+        ax: Axes,
+        samples: np.ndarray,
+        title: str,
+        xlabel: str,
+        ylabel: str,
+        color: str,
+    ) -> None:
+        ax.scatter(
+            samples[:, 0],
+            samples[:, 1],
+            alpha=0.5,
+            color=color,
+            edgecolor="k",
+            s=20,
+        )
+        self._style_axis(ax=ax, title=title, xlabel=xlabel, ylabel=ylabel)
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.axis("equal")

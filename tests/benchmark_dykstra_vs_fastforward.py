@@ -9,7 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
-from utils import ProjectPlotter
+from utils import DykstraPlotter
 
 def run_benchmark():
 
@@ -51,13 +51,12 @@ def run_benchmark():
     print()
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "dykstra_benchmarks")
-    plotter = ProjectPlotter(output_dir=out_dir)
+    plotter = DykstraPlotter(output_dir=out_dir)
 
     plotter.plot_convergence_comparison(
         results=[result_std, result_ff],
         labels=["Standard Dykstra", "Stall-Detection (FF)"],
         max_iter=MAX_ITER,
-        suptitle=f"Convergence Comparison  (dim={DIM}, halfspaces={NUM_HALFSPACES})",
         filename=f"benchmark_convergence_SEED={SEED}_DIM={DIM}_HS={NUM_HALFSPACES}.png",
         show=True,
     )

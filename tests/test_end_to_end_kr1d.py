@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import generate_crescent_data_2d
 from utils import HermiteBasis, KRMap1D
 from utils import ProjectedGradientDescent
-from utils import ProjectPlotter
+from utils import DykstraPlotter
 from utils import (
     DykstraProjectionSolver,
     DykstraStallDetectionSolver,
@@ -37,7 +37,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     """
     # Step 1 – Data
     num_particles: int = 500
-    seed: int = 44
+    seed: int = 42
     _, z = generate_crescent_data_2d(num_particles, seed=seed)
     z1: np.ndarray = z[:, 0]
 
@@ -47,12 +47,12 @@ def test_dykstra_fast_forward_advantage() -> None:
     kr_model = KRMap1D(data=z1, basis=basis, degree=degree)
 
     # Step 3 – Constraints
-    A, b = kr_model.get_polyhedral_constraints(epsilon=5e-1)
+    A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
 
     # Step 4 – Initial guess (identity map: S(z) = z)
-    w_init: np.ndarray = np.array([3.5, -4.5, 3.0, -3.0])
+    w_init: np.ndarray = np.array([0., 1., 0., 0.])
 
-    learning_rate: float = 0.5
+    learning_rate: float = 0.01
     max_outer_iter: int = 3
     dykstra_kwargs: dict = {"max_iter": 1000, "track_error": True}
 
@@ -107,13 +107,10 @@ def test_dykstra_fast_forward_advantage() -> None:
     plot_output_dir = os.path.join(
         os.path.dirname(__file__), "..", "results", "dykstra_benchmarks"
     )
-    plotter = ProjectPlotter(output_dir=plot_output_dir)
+    plotter = DykstraPlotter(output_dir=plot_output_dir)
     plotter.plot_outer_iteration_solver_comparison(
         vanilla_results=history_vanilla["projection_results"],
         fast_forward_results=history_fast["projection_results"],
-        suptitle=(
-            f"KR1D PGD Inner Dykstra Error "
-        ),
         filename_prefix=(
             f"kr1d_outer_iter_comparison_SEED={seed}_M={num_particles}"
         ),
