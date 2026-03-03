@@ -6,7 +6,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils import hermite_polynomial
-from utils.optimal_transport import HermiteBasis, KRMap1D
+from utils import HermiteBasis, KRMap1D
 
 def build_dykstra_constraints(z1: np.ndarray, degree: int, epsilon: float = 1e-4) -> tuple[np.ndarray, np.ndarray]:
     """

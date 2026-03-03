@@ -33,40 +33,28 @@ def test_dykstra_fast_forward_advantage() -> None:
     enabled).  It then asserts that both solvers converge to the same
     coefficient vector and prints a timing summary.
     """
-    # ------------------------------------------------------------------
     # Step 1 – Data
-    # ------------------------------------------------------------------
     num_particles: int = 500
     _, z = generate_crescent_data_2d(num_particles, seed=42)
     z1: np.ndarray = z[:, 0]
 
-    # ------------------------------------------------------------------
     # Step 2 – Model
-    # ------------------------------------------------------------------
     degree: int = 3
     basis = HermiteBasis()
     kr_model = KRMap1D(data=z1, basis=basis, degree=degree)
 
-    # ------------------------------------------------------------------
     # Step 3 – Constraints
-    # ------------------------------------------------------------------
     A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
 
-    # ------------------------------------------------------------------
     # Step 4 – Initial guess (identity map: S(z) = z)
-    # ------------------------------------------------------------------
     w_init: np.ndarray = np.array([0.0, 1.0, 0.0, 0.0])
 
-    # ------------------------------------------------------------------
     # PGD parameters
-    # ------------------------------------------------------------------
     learning_rate: float = 0.01
     max_outer_iter: int = 10
     dykstra_kwargs: dict = {"max_iter": 1000, "track_error": False}
 
-    # ------------------------------------------------------------------
     # Step 5a – Vanilla Dykstra
-    # ------------------------------------------------------------------
     pgd_vanilla = ProjectedGradientDescent(
         learning_rate=learning_rate,
         max_outer_iter=max_outer_iter,
@@ -84,9 +72,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     )
     time_vanilla: float = time.perf_counter() - t0
 
-    # ------------------------------------------------------------------
     # Step 5b – Fast-forward (stall-detection) Dykstra
-    # ------------------------------------------------------------------
     pgd_fast = ProjectedGradientDescent(
         learning_rate=learning_rate,
         max_outer_iter=max_outer_iter,
@@ -105,9 +91,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     )
     time_fast: float = time.perf_counter() - t0
 
-    # ------------------------------------------------------------------
     # Step 6 – Assertions and summary
-    # ------------------------------------------------------------------
     np.testing.assert_allclose(
         w_vanilla,
         w_fast,

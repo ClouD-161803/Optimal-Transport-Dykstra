@@ -5,11 +5,11 @@ import os
 import time
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
+from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
+from utils import ProjectPlotter
 
 def run_benchmark():
 
@@ -50,59 +50,17 @@ def run_benchmark():
     print("=" * 60)
     print()
 
-    iters = np.arange(MAX_ITER + 1)
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharex=True, sharey=True)
-
-    for ax, label, result in [
-        (axes[0], "Standard Dykstra", result_std),
-        (axes[1], "Stall-Detection (FF)", result_ff),
-    ]:
-        sq: np.ndarray = result.squared_errors  # type: ignore
-        st: np.ndarray = result.stalled_errors  # type: ignore
-        cv: np.ndarray = result.converged_errors  # type: ignore
-
-        color_seq = []
-        for i in range(len(iters)):
-            if not np.isnan(cv[i]):
-                color_seq.append(('tab:green', 'Converged'))
-            elif not np.isnan(st[i]):
-                color_seq.append(('tab:red', 'Stalled'))
-            else:
-                color_seq.append(('tab:blue', 'Normal'))
-
-        groups: list = []
-        current_run = [0]
-        for idx in range(1, len(iters)):
-            if color_seq[idx][0] == color_seq[current_run[0]][0]:
-                current_run.append(idx)
-            else:
-                groups.append((color_seq[current_run[0]], current_run))
-                current_run = [idx]
-        groups.append((color_seq[current_run[0]], current_run))
-
-        seen_labels: set = set()
-        for g, ((color, lbl), indices) in enumerate(groups):
-            xs = indices + [groups[g + 1][1][0]] if g < len(groups) - 1 else indices
-            lbl_arg = lbl if lbl not in seen_labels else None
-            seen_labels.add(lbl)
-            ax.semilogy(iters[xs], sq[xs], '.-', color=color, markersize=3, label=lbl_arg)  # type: ignore
-
-        ax.set_title(label)
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("Squared error")
-        ax.legend()
-        ax.grid(True, which='both', alpha=0.3)
-
-    fig.suptitle(
-        f"Convergence Comparison  (dim={DIM}, halfspaces={NUM_HALFSPACES})",
-        fontsize=13,
-    )
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "dykstra_benchmarks")
-    os.makedirs(out_dir, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, f"benchmark_convergence_SEED={SEED}_DIM={DIM}_HS={NUM_HALFSPACES}.png"), dpi=150)
-    plt.show()
+    plotter = ProjectPlotter(output_dir=out_dir)
+
+    plotter.plot_convergence_comparison(
+        results=[result_std, result_ff],
+        labels=["Standard Dykstra", "Stall-Detection (FF)"],
+        max_iter=MAX_ITER,
+        suptitle=f"Convergence Comparison  (dim={DIM}, halfspaces={NUM_HALFSPACES})",
+        filename=f"benchmark_convergence_SEED={SEED}_DIM={DIM}_HS={NUM_HALFSPACES}.png",
+        show=True,
+    )
 
 if __name__ == "__main__":
     SEED = 42
@@ -111,6 +69,5 @@ if __name__ == "__main__":
     MARGIN = 0.01
     MAX_ITER = 200
     MIN_ERROR = 1e-5
-    
-    run_benchmark()
 
+    run_benchmark()
