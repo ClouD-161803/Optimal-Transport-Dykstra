@@ -47,7 +47,7 @@ if __name__ == "__main__":
     D = 3
     eps = 1e-4
 
-    # --- Original (manual) implementation ---
+    # Original (manual) implementation
     A_matrix, b_vector = build_dykstra_constraints(z1_samples, degree=D, epsilon=eps)
 
     print(f"\nEvaluating for D={D}, epsilon={eps} at z1 = {z1_samples}")
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     print("\nOffset vector (manual):")
     print(b_vector)
 
-    # --- New OO implementation ---
+    # New OO implementation
     basis = HermiteBasis()
     kr = KRMap1D(z1_samples, basis, degree=D)
     A_oo, b_oo = kr.get_polyhedral_constraints(epsilon=eps)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     print("\nOffset vector (KRMap1D):")
     print(b_oo)
 
-    # --- Comparison ---
+    # Comparison
     mat_match = np.allclose(A_matrix, A_oo)
     vec_match = np.allclose(b_vector, b_oo)
     print(f"\nConstraint matrices match: {mat_match}")
