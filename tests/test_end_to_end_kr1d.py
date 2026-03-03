@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import generate_crescent_data_2d
 from utils import HermiteBasis, KRMap1D
 from utils import ProjectedGradientDescent
+from utils import ProjectPlotter
 from utils import (
     DykstraProjectionSolver,
     DykstraStallDetectionSolver,
@@ -30,12 +31,13 @@ def test_dykstra_fast_forward_advantage() -> None:
     KR map, and runs Projected Gradient Descent twice — once with the
     standard ``DykstraProjectionSolver`` and once with the
     ``DykstraStallDetectionSolver`` (with inactive half-space removal
-    enabled).  It then asserts that both solvers converge to the same
-    coefficient vector and prints a timing summary.
+    enabled). It then asserts that both solvers converge to the same
+    coefficient vector, and saves one figure with all per-outer-iteration
+    squared-error comparisons.
     """
     # Step 1 – Data
     num_particles: int = 500
-    _, z = generate_crescent_data_2d(num_particles, seed=42)
+    _, z = generate_crescent_data_2d(num_particles, seed=43)
     z1: np.ndarray = z[:, 0]
 
     # Step 2 – Model
@@ -44,15 +46,14 @@ def test_dykstra_fast_forward_advantage() -> None:
     kr_model = KRMap1D(data=z1, basis=basis, degree=degree)
 
     # Step 3 – Constraints
-    A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
+    A, b = kr_model.get_polyhedral_constraints(epsilon=5e-1)
 
     # Step 4 – Initial guess (identity map: S(z) = z)
-    w_init: np.ndarray = np.array([0.0, 1.0, 0.0, 0.0])
+    w_init: np.ndarray = np.array([3.5, -4.5, 3.0, -3.0])
 
-    # PGD parameters
-    learning_rate: float = 0.01
-    max_outer_iter: int = 10
-    dykstra_kwargs: dict = {"max_iter": 1000, "track_error": False}
+    learning_rate: float = 0.5
+    max_outer_iter: int = 3
+    dykstra_kwargs: dict = {"max_iter": 1000, "track_error": True}
 
     # Step 5a – Vanilla Dykstra
     pgd_vanilla = ProjectedGradientDescent(
@@ -101,6 +102,18 @@ def test_dykstra_fast_forward_advantage() -> None:
 
     obj_vanilla: float = history_vanilla["objective_value"][-1]
     obj_fast: float = history_fast["objective_value"][-1]
+
+    plot_output_dir = os.path.join(
+        os.path.dirname(__file__), "..", "results", "dykstra_benchmarks"
+    )
+    plotter = ProjectPlotter(output_dir=plot_output_dir)
+    plotter.plot_outer_iteration_solver_comparison(
+        vanilla_results=history_vanilla["projection_results"],
+        fast_forward_results=history_fast["projection_results"],
+        suptitle="KR1D PGD Inner Dykstra Error",
+        filename_prefix="kr1d_outer_iter_comparison",
+        show=False,
+    )
 
     print("\n" + "=" * 65)
     print("  End-to-End KR1D Test — Dykstra Solver Comparison")

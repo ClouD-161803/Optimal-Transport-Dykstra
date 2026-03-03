@@ -90,6 +90,9 @@ class ProjectedGradientDescent:
               ``max_outer_iter``).  Recorded as the configured inner
               ``max_iter`` when the solver does not expose an explicit
               iteration count.
+            * ``"projection_results"`` – list of projection result
+                objects returned by the inner Dykstra solver, one per outer
+                iteration.
         """
         w = w_init.copy()
 
@@ -97,6 +100,7 @@ class ProjectedGradientDescent:
 
         objective_values: list[float] = [float(objective_fn(w))]
         dykstra_inner_iters: list[int] = []
+        projection_results: list[Any] = []
 
         for _ in range(self.max_outer_iter):
             grad = gradient_fn(w)
@@ -109,14 +113,11 @@ class ProjectedGradientDescent:
                 **self.dykstra_kwargs,
             )
             result = solver.solve()
+            projection_results.append(result)
             w = result.projection
 
             objective_values.append(float(objective_fn(w)))
 
-            # Record inner iteration count.  If the result carries a
-            # squared_errors array its length minus one equals the number
-            # of completed cycles; otherwise fall back to the configured
-            # inner max_iter.
             if (
                 hasattr(result, "squared_errors")
                 and result.squared_errors is not None
@@ -128,6 +129,7 @@ class ProjectedGradientDescent:
         history: dict = {
             "objective_value": objective_values,
             "dykstra_inner_iters": dykstra_inner_iters,
+            "projection_results": projection_results,
         }
 
         return w, history

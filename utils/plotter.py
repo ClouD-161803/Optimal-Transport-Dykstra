@@ -101,6 +101,67 @@ class ProjectPlotter:
             plt.show()
 
         return fig
+
+    def plot_outer_iteration_solver_comparison(
+        self,
+        vanilla_results: Sequence[ProjectionResult],
+        fast_forward_results: Sequence[ProjectionResult],
+        suptitle: str = "Dykstra Squared Error by Outer Iteration",
+        filename_prefix: str | None = None,
+        show: bool = True,
+    ) -> Figure:
+        """Plot all outer-iteration solver comparisons on a single figure.
+
+        The figure contains one row per outer PGD iteration and two
+        columns: vanilla Dykstra (left) and fast-forward Dykstra (right).
+        """
+        if len(vanilla_results) != len(fast_forward_results):
+            raise ValueError(
+                "vanilla_results and fast_forward_results must have the same length."
+            )
+
+        n_outer = len(vanilla_results)
+        fig, axes = plt.subplots(n_outer, 2, figsize=(12, 4 * n_outer))
+        if n_outer == 1:
+            axes = np.array([axes])
+
+        for outer_idx, (vanilla_res, fast_res) in enumerate(
+            zip(vanilla_results, fast_forward_results)
+        ):
+            vanilla_sq = vanilla_res.squared_errors
+            fast_sq = fast_res.squared_errors
+            if vanilla_sq is None or fast_sq is None:
+                raise ValueError(
+                    "All ProjectionResult entries must include squared_errors "
+                    "(use track_error=True)."
+                )
+
+            self._draw_convergence_panel(
+                axes[outer_idx][0],
+                vanilla_res,
+                np.arange(len(vanilla_sq)),
+                f"Outer {outer_idx + 1} — Vanilla Dykstra",
+            )
+            self._draw_convergence_panel(
+                axes[outer_idx][1],
+                fast_res,
+                np.arange(len(fast_sq)),
+                f"Outer {outer_idx + 1} — Fast-Forward Dykstra",
+            )
+
+        fig.suptitle(suptitle, fontsize=13)
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
+
+        if filename_prefix is not None:
+            fig.savefig(
+                os.path.join(self.output_dir, f"{filename_prefix}.png"),
+                dpi=self.dpi,
+            )
+
+        if show:
+            plt.show()
+
+        return fig
     
     # Internal helpers
 
@@ -155,11 +216,7 @@ class ProjectPlotter:
         sq = result.squared_errors
         st = result.stalled_errors
         cv = result.converged_errors
-        
-        # The ProjectionResult fields are Optional in the dataclass, but the
-        # plotting routines require them.  Explicitly check for None so the
-        # type checker (Pylance) knows these values are non-None for the
-        # remainder of the function.
+
         if sq is None or st is None or cv is None:
             raise ValueError(
                 "ProjectionResult must have squared_errors, stalled_errors,"
