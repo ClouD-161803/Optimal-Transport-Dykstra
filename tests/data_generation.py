@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils.data_generator import generate_crescent_data
+from utils.data_generator import generate_crescent_data_2d
 
 
 def plot_distributions(zeta: np.ndarray, z: np.ndarray):
@@ -36,5 +36,5 @@ if __name__ == "__main__":
     M = 1000
     SEED = 42
 
-    normal_particles, crescent_particles = generate_crescent_data(num_particles=M, seed=SEED)
+    normal_particles, crescent_particles = generate_crescent_data_2d(num_particles=M, seed=SEED)
     plot_distributions(normal_particles, crescent_particles)

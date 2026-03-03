@@ -1,6 +1,6 @@
 import numpy as np
 
-def generate_crescent_data(num_particles: int, seed: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+def generate_crescent_data_2d(num_particles: int, seed: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """
     Generates a 2D crescent-shaped point cloud by applying a nonlinear shear 
     to a standard bivariate normal distribution.
