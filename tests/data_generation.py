@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils.data_generator import generate_crescent_data_2d
+from utils import generate_crescent_data_2d
 
 
 def plot_distributions(zeta: np.ndarray, z: np.ndarray):

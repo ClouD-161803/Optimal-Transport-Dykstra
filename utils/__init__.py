@@ -5,3 +5,5 @@ from .projection_solver import (
     DykstraMapHybridSolver,
     DykstraStallDetectionSolver,
 )
+from .data_generator import generate_crescent_data_2d
+from .hermite import hermite_polynomial
