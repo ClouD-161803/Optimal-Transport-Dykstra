@@ -28,7 +28,7 @@ class ProjectedGradientDescent:
     projection_solver_class : type
         A *class* (not an instance) that implements the Dykstra projection
         interface.  It must accept at least the keyword arguments ``z``,
-        ``N``, ``c``, and ``max_iter``, and expose a ``solve()`` method
+        ``A``, ``b``, and ``max_iter``, and expose a ``solve()`` method
         that returns an object with a ``.projection`` attribute.
     **dykstra_kwargs
         Additional keyword arguments forwarded verbatim to
@@ -104,8 +104,8 @@ class ProjectedGradientDescent:
 
             solver = self.projection_solver_class(
                 z=w_tilde,
-                N=A_constraint,
-                c=b_constraint,
+                A=A_constraint,
+                b=b_constraint,
                 **self.dykstra_kwargs,
             )
             result = solver.solve()
