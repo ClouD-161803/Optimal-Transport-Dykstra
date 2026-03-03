@@ -63,23 +63,35 @@ for ax, label, result in [
     (axes[0], "Standard Dykstra", result_std),
     (axes[1], "Stall-Detection (FF)", result_ff),
 ]:
-    sq = result.squared_errors  # type: ignore
-    st = result.stalled_errors  # type: ignore
-    cv = result.converged_errors  # type: ignore
+    sq: np.ndarray = result.squared_errors  # type: ignore
+    st: np.ndarray = result.stalled_errors  # type: ignore
+    cv: np.ndarray = result.converged_errors  # type: ignore
 
-    normal_mask = np.isnan(st) & np.isnan(cv)  # type: ignore
-    ax.semilogy(iters[normal_mask], sq[normal_mask], '.-', color='tab:blue', # type: ignore
-                markersize=3, label='Normal') # type: ignore
+    color_seq = []
+    for i in range(len(iters)):
+        if not np.isnan(cv[i]):
+            color_seq.append(('tab:green', 'Converged'))
+        elif not np.isnan(st[i]):
+            color_seq.append(('tab:red', 'Stalled'))
+        else:
+            color_seq.append(('tab:blue', 'Normal'))
 
-    stall_mask = ~np.isnan(st)  # type: ignore
-    if np.any(stall_mask):
-        ax.semilogy(iters[stall_mask], st[stall_mask], '.-', color='tab:red', # type: ignore
-                    markersize=3, label='Stalled') # type: ignore
+    groups: list = []
+    current_run = [0]
+    for idx in range(1, len(iters)):
+        if color_seq[idx][0] == color_seq[current_run[0]][0]:
+            current_run.append(idx)
+        else:
+            groups.append((color_seq[current_run[0]], current_run))
+            current_run = [idx]
+    groups.append((color_seq[current_run[0]], current_run))
 
-    conv_mask = ~np.isnan(cv)  # type: ignore
-    if np.any(conv_mask):
-        ax.semilogy(iters[conv_mask], cv[conv_mask], '.-', color='tab:green', # type: ignore
-                    markersize=3, label='Converged') # type: ignore
+    seen_labels: set = set()
+    for g, ((color, lbl), indices) in enumerate(groups):
+        xs = indices + [groups[g + 1][1][0]] if g < len(groups) - 1 else indices
+        lbl_arg = lbl if lbl not in seen_labels else None
+        seen_labels.add(lbl)
+        ax.semilogy(iters[xs], sq[xs], '.-', color=color, markersize=3, label=lbl_arg)  # type: ignore
 
     ax.set_title(label)
     ax.set_xlabel("Iteration")
@@ -91,7 +103,8 @@ fig.suptitle(
     f"Convergence Comparison  (dim={DIM}, halfspaces={NUM_HALFSPACES})",
     fontsize=13,
 )
+out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "dykstra_benchmarks")
+os.makedirs(out_dir, exist_ok=True)
 plt.tight_layout()
-plt.savefig(os.path.join(os.path.dirname(__file__), "benchmark_convergence.png"),
-            dpi=150)
+plt.savefig(os.path.join(out_dir, "benchmark_convergence.png"), dpi=150)
 plt.show()
