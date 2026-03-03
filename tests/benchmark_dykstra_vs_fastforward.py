@@ -106,5 +106,5 @@ fig.suptitle(
 out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "dykstra_benchmarks")
 os.makedirs(out_dir, exist_ok=True)
 plt.tight_layout()
-plt.savefig(os.path.join(out_dir, "benchmark_convergence.png"), dpi=150)
+plt.savefig(os.path.join(out_dir, f"benchmark_convergence_SEED={SEED}_DIM={DIM}_HS={NUM_HALFSPACES}.png"), dpi=150)
 plt.show()
