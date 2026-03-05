@@ -1,10 +1,4 @@
 """Projected Gradient Descent solver with a pluggable Dykstra projection step.
-
-This module is a pure optimisation engine.  It has no knowledge of the
-specific problem domain (e.g. optimal transport, polynomial bases).  Its
-sole responsibility is to minimise an arbitrary differentiable objective
-over a polyhedral feasible set, using gradient descent steps followed by
-Dykstra-based projections.
 """
 
 from typing import Any, Callable
