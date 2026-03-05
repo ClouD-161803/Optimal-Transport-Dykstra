@@ -33,6 +33,7 @@ def benchmark_kr_map_components_nd(
     learning_rate: float,
     max_outer_iter: int,
     dykstra_kwargs: dict[str, Any],
+    run_solver_mode: str,
     gradient_clip_value: float | None,
     plot_dykstra_iterates: bool,
     enforce_matching: bool = False,
@@ -59,6 +60,8 @@ def benchmark_kr_map_components_nd(
         Number of outer PGD iterations.
     dykstra_kwargs : dict, optional
         Keyword arguments forwarded to Dykstra solvers.
+    run_solver_mode : str
+        Solver execution mode: ``"both"``, ``"vanilla"``, or ``"fast"``.
     gradient_clip_value : float | None
         Elementwise gradient clipping bound for PGD. If ``None``, clipping is
         disabled.
@@ -78,6 +81,13 @@ def benchmark_kr_map_components_nd(
         raise ValueError("z must have shape (M, num_dimensions).")
     if z.shape[1] < num_dimensions:
         raise ValueError("z has fewer columns than num_dimensions.")
+
+    run_solver_mode = run_solver_mode.lower()
+    if run_solver_mode not in {"both", "vanilla", "fast"}:
+        raise ValueError("run_solver_mode must be one of: 'both', 'vanilla', 'fast'.")
+
+    run_vanilla = run_solver_mode in {"both", "vanilla"}
+    run_fast = run_solver_mode in {"both", "fast"}
 
     plot_output_dir = os.path.join(
         os.path.dirname(__file__), "..", "results", "dykstra_benchmarks"
@@ -105,94 +115,128 @@ def benchmark_kr_map_components_nd(
                 f"expected {kr_model.num_coefficients}, got {component_w_init.size}."
             )
 
-        pgd_vanilla = ProjectedGradientDescent(
-            learning_rate=learning_rate,
-            max_outer_iter=max_outer_iter,
-            projection_solver_class=DykstraProjectionSolver,
-            gradient_clip_value=gradient_clip_value,
-            **dykstra_kwargs,
-        )
-        t0 = time.perf_counter()
-        w_vanilla, history_vanilla = pgd_vanilla.optimise(
-            w_init=component_w_init,
-            objective_fn=kr_model.objective,
-            gradient_fn=kr_model.gradient,
-            A_constraint=A,
-            b_constraint=b,
-        )
-        time_vanilla = time.perf_counter() - t0
-
-        pgd_fast = ProjectedGradientDescent(
-            learning_rate=learning_rate,
-            max_outer_iter=max_outer_iter,
-            projection_solver_class=DykstraStallDetectionSolver,
-            gradient_clip_value=gradient_clip_value,
-            delete_spaces=True,
-            **dykstra_kwargs,
-        )
-        t0 = time.perf_counter()
-        w_fast, history_fast = pgd_fast.optimise(
-            w_init=component_w_init,
-            objective_fn=kr_model.objective,
-            gradient_fn=kr_model.gradient,
-            A_constraint=A,
-            b_constraint=b,
-        )
-        time_fast = time.perf_counter() - t0
-
-        coeff_close = bool(np.allclose(w_vanilla, w_fast, atol=1e-4))
-        coeff_max_abs_diff = float(np.max(np.abs(w_vanilla - w_fast)))
-
-        if enforce_matching:
-            np.testing.assert_allclose(
-                w_vanilla,
-                w_fast,
-                atol=1e-4,
-                err_msg=(
-                    "Vanilla and fast-forward Dykstra produced different coefficients "
-                    f"for component dimension {component_dim}."
-                ),
+        w_vanilla = None
+        history_vanilla = None
+        time_vanilla = None
+        if run_vanilla:
+            pgd_vanilla = ProjectedGradientDescent(
+                learning_rate=learning_rate,
+                max_outer_iter=max_outer_iter,
+                projection_solver_class=DykstraProjectionSolver,
+                gradient_clip_value=gradient_clip_value,
+                **dykstra_kwargs,
             )
+            t0 = time.perf_counter()
+            w_vanilla, history_vanilla = pgd_vanilla.optimise(
+                w_init=component_w_init,
+                objective_fn=kr_model.objective,
+                gradient_fn=kr_model.gradient,
+                A_constraint=A,
+                b_constraint=b,
+            )
+            time_vanilla = time.perf_counter() - t0
+
+        w_fast = None
+        history_fast = None
+        time_fast = None
+        if run_fast:
+            pgd_fast = ProjectedGradientDescent(
+                learning_rate=learning_rate,
+                max_outer_iter=max_outer_iter,
+                projection_solver_class=DykstraStallDetectionSolver,
+                gradient_clip_value=gradient_clip_value,
+                delete_spaces=True,
+                **dykstra_kwargs,
+            )
+            t0 = time.perf_counter()
+            w_fast, history_fast = pgd_fast.optimise(
+                w_init=component_w_init,
+                objective_fn=kr_model.objective,
+                gradient_fn=kr_model.gradient,
+                A_constraint=A,
+                b_constraint=b,
+            )
+            time_fast = time.perf_counter() - t0
+
+        coeff_close = None
+        coeff_max_abs_diff = None
+        if run_vanilla and run_fast and w_vanilla is not None and w_fast is not None:
+            coeff_close = bool(np.allclose(w_vanilla, w_fast, atol=1e-4))
+            coeff_max_abs_diff = float(np.max(np.abs(w_vanilla - w_fast)))
+
+            if enforce_matching:
+                np.testing.assert_allclose(
+                    w_vanilla,
+                    w_fast,
+                    atol=1e-4,
+                    err_msg=(
+                        "Vanilla and fast-forward Dykstra produced different coefficients "
+                        f"for component dimension {component_dim}."
+                    ),
+                )
 
         prefix = (
             f"kr{num_dimensions}d_component_{component_dim}_"
             f"SEED={seed}_M={num_particles}"
         )
-        if plot_dykstra_iterates:
+        if plot_dykstra_iterates and run_vanilla and run_fast:
             plotter.plot_outer_iteration_solver_comparison(
-                vanilla_results=history_vanilla["projection_results"],
-                fast_forward_results=history_fast["projection_results"],
+                vanilla_results=history_vanilla["projection_results"],  # type: ignore[index]
+                fast_forward_results=history_fast["projection_results"],  # type: ignore[index]
                 filename_prefix=prefix,
                 show=False,
             )
 
-        component_results.append(
-            {
-                "component_dim": component_dim,
-                "w_vanilla": w_vanilla,
-                "w_fast": w_fast,
-                "time_vanilla": time_vanilla,
-                "time_fast": time_fast,
-                "objective_vanilla": history_vanilla["objective_value"][-1],
-                "objective_fast": history_fast["objective_value"][-1],
-                "history_vanilla": history_vanilla,
-                "history_fast": history_fast,
-                "coefficients_close": coeff_close,
-                "coefficients_max_abs_diff": coeff_max_abs_diff,
-            }
-        )
+        component_result: dict[str, Any] = {
+            "component_dim": component_dim,
+            "coefficients_close": coeff_close,
+            "coefficients_max_abs_diff": coeff_max_abs_diff,
+        }
 
-        print(
-            f"[Component {component_dim}/{num_dimensions}] "
-            f"vanilla={time_vanilla:.4f}s, fast={time_fast:.4f}s, "
-            f"coeff_close={coeff_close}"
-        )
+        if run_vanilla and w_vanilla is not None and history_vanilla is not None:
+            component_result["w_vanilla"] = w_vanilla
+            component_result["time_vanilla"] = time_vanilla
+            component_result["objective_vanilla"] = history_vanilla["objective_value"][-1]
+            component_result["history_vanilla"] = history_vanilla
+        if run_fast and w_fast is not None and history_fast is not None:
+            component_result["w_fast"] = w_fast
+            component_result["time_fast"] = time_fast
+            component_result["objective_fast"] = history_fast["objective_value"][-1]
+            component_result["history_fast"] = history_fast
+
+        component_results.append(component_result)
+
+        if run_vanilla and run_fast:
+            print(
+                f"[Component {component_dim}/{num_dimensions}] "
+                f"vanilla={time_vanilla:.4f}s, fast={time_fast:.4f}s, "
+                f"coeff_close={coeff_close}"
+            )
+        elif run_vanilla:
+            print(
+                f"[Component {component_dim}/{num_dimensions}] "
+                f"vanilla={time_vanilla:.4f}s"
+            )
+        else:
+            print(
+                f"[Component {component_dim}/{num_dimensions}] "
+                f"fast={time_fast:.4f}s"
+            )
 
     return component_results
 
 
 def run_benchmark() -> list[dict[str, Any]]:
     """Run the n-dimensional KR benchmark using module-level configuration."""
+    solver_mode = RUN_SOLVER_MODE.lower()
+    if solver_mode not in {"both", "vanilla", "fast"}:
+        raise ValueError("RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast'.")
+
+    if solver_mode != "both" and PLOT_DYKSTRA_ITERATES:
+        raise ValueError(
+            "PLOT_DYKSTRA_ITERATES=True is only valid when RUN_SOLVER_MODE='both'."
+        )
+
     if NUM_DIMENSIONS == 2:
         normal_samples, z_samples = generate_crescent_data_2d(NUM_PARTICLES, seed=SEED)
     else:
@@ -210,42 +254,82 @@ def run_benchmark() -> list[dict[str, Any]]:
         learning_rate=LEARNING_RATE,
         max_outer_iter=MAX_OUTER_ITER,
         dykstra_kwargs=DYKSTRA_KWARGS,
+        run_solver_mode=solver_mode,
         gradient_clip_value=GRADIENT_CLIP_VALUE,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
 
     if PLOT_DISTRIBUTION_COMPARISON:
-        vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
-        fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
-
-        vanilla_mapped = KR_MAP.evaluate(
-            z=z_samples[:, :NUM_DIMENSIONS],
-            weights_by_component=vanilla_weights,
-        )
-        fast_mapped = KR_MAP.evaluate(
-            z=z_samples[:, :NUM_DIMENSIONS],
-            weights_by_component=fast_weights,
-        )
-
         plot_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "results", "full_experiment_benchmarks"
         )
         distribution_plotter = DistributionPlotter(output_dir=plot_output_dir)
-        distribution_plotter.plot_kr_map_distribution_comparison(
-            normal_samples=normal_samples[:, :2],
-            synthetic_samples=z_samples[:, :2],
-            vanilla_mapped_samples=vanilla_mapped[:, :2],
-            fast_mapped_samples=fast_mapped[:, :2],
-            filename=(
-                f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
-                f"SEED={SEED}_M={NUM_PARTICLES}.png"
-            ),
-            show=False,
-        )
+        if solver_mode == "both":
+            vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
+            fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
+
+            vanilla_mapped = KR_MAP.evaluate(
+                z=z_samples[:, :NUM_DIMENSIONS],
+                weights_by_component=vanilla_weights,
+            )
+            fast_mapped = KR_MAP.evaluate(
+                z=z_samples[:, :NUM_DIMENSIONS],
+                weights_by_component=fast_weights,
+            )
+
+            distribution_plotter.plot_kr_map_distribution_comparison(
+                normal_samples=normal_samples[:, :2],
+                synthetic_samples=z_samples[:, :2],
+                vanilla_mapped_samples=vanilla_mapped[:, :2],
+                fast_mapped_samples=fast_mapped[:, :2],
+                filename=(
+                    f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
+                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                ),
+                show=False,
+            )
+        elif solver_mode == "vanilla":
+            vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
+            vanilla_mapped = KR_MAP.evaluate(
+                z=z_samples[:, :NUM_DIMENSIONS],
+                weights_by_component=vanilla_weights,
+            )
+            distribution_plotter.plot_kr_map_distribution_single_solver(
+                normal_samples=normal_samples[:, :2],
+                synthetic_samples=z_samples[:, :2],
+                mapped_samples=vanilla_mapped[:, :2],
+                solver_label="vanilla Dykstra",
+                filename=(
+                    f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
+                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                ),
+                show=False,
+            )
+        else:
+            fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
+            fast_mapped = KR_MAP.evaluate(
+                z=z_samples[:, :NUM_DIMENSIONS],
+                weights_by_component=fast_weights,
+            )
+            distribution_plotter.plot_kr_map_distribution_single_solver(
+                normal_samples=normal_samples[:, :2],
+                synthetic_samples=z_samples[:, :2],
+                mapped_samples=fast_mapped[:, :2],
+                solver_label="fast-forward Dykstra",
+                filename=(
+                    f"kr{NUM_DIMENSIONS}d_distribution_fast_"
+                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                ),
+                show=False,
+            )
 
     print("\nCompleted n-dimensional KR component benchmark.")
-    num_component_figures = len(results) if PLOT_DYKSTRA_ITERATES else 0
+    num_component_figures = (
+        len(results)
+        if (PLOT_DYKSTRA_ITERATES and solver_mode == "both")
+        else 0
+    )
     num_distribution_figures = 1 if PLOT_DISTRIBUTION_COMPARISON else 0
     print(
         "Saved "
@@ -257,6 +341,9 @@ def run_benchmark() -> list[dict[str, Any]]:
 
 
 if __name__ == "__main__":
+    RUN_SOLVER_MODE = "fast"  # options: "both", "vanilla", "fast"
+    ENFORCE_MATCHING = False
+
     SEED = int(time.time() * 1000) % 1000000
     # SEED = 42
 
@@ -264,7 +351,7 @@ if __name__ == "__main__":
     NUM_PARTICLES = 1000
 
     LEARNING_RATE = 0.001
-    MAX_OUTER_ITER = 3
+    MAX_OUTER_ITER = 500
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": True}
     DEGREE = 3
     BASIS = HermiteBasis()
@@ -274,6 +361,7 @@ if __name__ == "__main__":
         log_epsilon=1e-8,
     )
     GRADIENT_CLIP_VALUE = 10.0
+    
     PLOT_DYKSTRA_ITERATES = False
     PLOT_DISTRIBUTION_COMPARISON = True
 
@@ -281,7 +369,5 @@ if __name__ == "__main__":
 
     for component_dim in range(1, NUM_DIMENSIONS + 1):
         W_INIT[component_dim] = KR_MAP.build_identity_initial_guess(component_dim)
-
-    ENFORCE_MATCHING = False
 
     run_benchmark()

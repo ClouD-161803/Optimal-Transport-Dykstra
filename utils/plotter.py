@@ -268,6 +268,60 @@ class DistributionPlotter(_BasePlotter):
     """Plotter for sample-distribution visualisations.
     """
 
+    def plot_kr_map_distribution_single_solver(
+        self,
+        normal_samples: np.ndarray,
+        synthetic_samples: np.ndarray,
+        mapped_samples: np.ndarray,
+        solver_label: str,
+        filename: str | None = None,
+        show: bool = True,
+    ) -> Figure:
+        """Plot a 3-panel comparison for one mapped KR solver output."""
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+        panels = [
+            (
+                normal_samples,
+                r"Reference normal $\mathcal{N}(0, I_2)$",
+                "tab:blue",
+            ),
+            (synthetic_samples, "Synthetic distribution", "tab:red"),
+            (
+                mapped_samples,
+                f"Mapped with {solver_label}",
+                "tab:green",
+            ),
+        ]
+
+        for ax, (samples, title, color) in zip(axes, panels):
+            ax.scatter(
+                samples[:, 0],
+                samples[:, 1],
+                alpha=0.5,
+                color=color,
+                edgecolor="k",
+                s=16,
+            )
+            self._style_axis(
+                ax=ax,
+                title=title,
+                xlabel="$x_1$",
+                ylabel="$x_2$",
+            )
+            ax.grid(True, linestyle="--", alpha=0.4)
+            ax.axis("equal")
+
+        fig.tight_layout()
+
+        out_name = filename or "kr_map_distribution_single_solver.png"
+        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
+
+        if show:
+            plt.show()
+
+        return fig
+
     def plot_kr_map_distribution_comparison(
         self,
         normal_samples: np.ndarray,
