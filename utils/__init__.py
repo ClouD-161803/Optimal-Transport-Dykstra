@@ -12,6 +12,10 @@ from .optimal_transport import (
     TensorHermiteBasis,
     KRMapComponent,
     KRMap1D,
+    assemble_component_weights,
+    evaluate_kr_map,
+    get_tensor_identity_term_index,
+    build_identity_initial_guess,
 )
 from .pgd_solver import ProjectedGradientDescent
 from .plotter import (

@@ -268,6 +268,73 @@ class DistributionPlotter(_BasePlotter):
     """Plotter for sample-distribution visualisations.
     """
 
+    def plot_kr_map_distribution_comparison(
+        self,
+        normal_samples: np.ndarray,
+        synthetic_samples: np.ndarray,
+        vanilla_mapped_samples: np.ndarray,
+        fast_mapped_samples: np.ndarray,
+        filename: str | None = None,
+        show: bool = True,
+    ) -> Figure:
+        """Plot a 2x2 comparison of reference, synthetic, and mapped samples.
+
+        Panels are arranged as:
+
+        * top-left: reference normal samples
+        * top-right: synthetic source samples
+        * bottom-left: samples mapped with vanilla Dykstra coefficients
+        * bottom-right: samples mapped with fast-forward Dykstra coefficients
+        """
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+        panels = [
+            (
+                normal_samples,
+                r"Reference normal $\mathcal{N}(0, I_2)$",
+                "tab:blue",
+            ),
+            (synthetic_samples, "Synthetic distribution", "tab:red"),
+            (
+                vanilla_mapped_samples,
+                "Mapped with vanilla Dykstra",
+                "tab:green",
+            ),
+            (
+                fast_mapped_samples,
+                "Mapped with fast-forward Dykstra",
+                "tab:purple",
+            ),
+        ]
+
+        for ax, (samples, title, color) in zip(axes.flatten(), panels):
+            ax.scatter(
+                samples[:, 0],
+                samples[:, 1],
+                alpha=0.5,
+                color=color,
+                edgecolor="k",
+                s=16,
+            )
+            self._style_axis(
+                ax=ax,
+                title=title,
+                xlabel="$x_1$",
+                ylabel="$x_2$",
+            )
+            ax.grid(True, linestyle="--", alpha=0.4)
+            ax.axis("equal")
+
+        fig.tight_layout()
+
+        out_name = filename or "kr_map_distribution_comparison.png"
+        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
+
+        if show:
+            plt.show()
+
+        return fig
+
     def plot_distributions(
         self,
         zeta: np.ndarray,

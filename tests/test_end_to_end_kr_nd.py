@@ -17,8 +17,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils import DykstraPlotter
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
+from utils import DistributionPlotter
 from utils import HermiteBasis, TensorHermiteBasis
 from utils import KRMapComponent
+from utils import assemble_component_weights, evaluate_kr_map
+from utils import build_identity_initial_guess
 from utils import ProjectedGradientDescent
 from utils import generate_crescent_data_2d
 
@@ -33,6 +36,8 @@ def benchmark_kr_map_components_nd(
     dykstra_kwargs: dict[str, Any],
     degree: int,
     basis: Any,
+    gradient_clip_value: float | None,
+    plot_dykstra_iterates: bool,
     enforce_matching: bool = False,
 ) -> list[dict[str, Any]]:
     """Benchmark each KR map component up to ``num_dimensions``.
@@ -60,6 +65,11 @@ def benchmark_kr_map_components_nd(
     basis : Any, optional
         Basis object for the first component. Higher components use
         ``TensorHermiteBasis``.
+    gradient_clip_value : float | None
+        Elementwise gradient clipping bound for PGD. If ``None``, clipping is
+        disabled.
+    plot_dykstra_iterates : bool
+        Whether to plot and save per-component Dykstra iterate figures.
     enforce_matching : bool, optional
         If ``True``, raises when vanilla and fast-forward coefficients differ
         beyond tolerance.
@@ -111,6 +121,7 @@ def benchmark_kr_map_components_nd(
             learning_rate=learning_rate,
             max_outer_iter=max_outer_iter,
             projection_solver_class=DykstraProjectionSolver,
+            gradient_clip_value=gradient_clip_value,
             **dykstra_kwargs,
         )
         t0 = time.perf_counter()
@@ -127,6 +138,7 @@ def benchmark_kr_map_components_nd(
             learning_rate=learning_rate,
             max_outer_iter=max_outer_iter,
             projection_solver_class=DykstraStallDetectionSolver,
+            gradient_clip_value=gradient_clip_value,
             delete_spaces=True,
             **dykstra_kwargs,
         )
@@ -158,12 +170,13 @@ def benchmark_kr_map_components_nd(
             f"kr{num_dimensions}d_component_{component_dim}_"
             f"SEED={seed}_M={num_particles}"
         )
-        plotter.plot_outer_iteration_solver_comparison(
-            vanilla_results=history_vanilla["projection_results"],
-            fast_forward_results=history_fast["projection_results"],
-            filename_prefix=prefix,
-            show=False,
-        )
+        if plot_dykstra_iterates:
+            plotter.plot_outer_iteration_solver_comparison(
+                vanilla_results=history_vanilla["projection_results"],
+                fast_forward_results=history_fast["projection_results"],
+                filename_prefix=prefix,
+                show=False,
+            )
 
         component_results.append(
             {
@@ -193,9 +206,10 @@ def benchmark_kr_map_components_nd(
 def run_benchmark() -> list[dict[str, Any]]:
     """Run the n-dimensional KR benchmark using module-level configuration."""
     if NUM_DIMENSIONS == 2:
-        _, z_samples = generate_crescent_data_2d(NUM_PARTICLES, seed=SEED)
+        normal_samples, z_samples = generate_crescent_data_2d(NUM_PARTICLES, seed=SEED)
     else:
         rng = np.random.default_rng(SEED)
+        normal_samples = rng.normal(size=(NUM_PARTICLES, NUM_DIMENSIONS))
         z_samples = rng.normal(size=(NUM_PARTICLES, NUM_DIMENSIONS))
 
     results = benchmark_kr_map_components_nd(
@@ -209,35 +223,79 @@ def run_benchmark() -> list[dict[str, Any]]:
         dykstra_kwargs=DYKSTRA_KWARGS,
         degree=DEGREE,
         basis=BASIS,
+        gradient_clip_value=GRADIENT_CLIP_VALUE,
+        plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
 
+    if PLOT_DISTRIBUTION_COMPARISON:
+        vanilla_weights = assemble_component_weights(results, "w_vanilla")
+        fast_weights = assemble_component_weights(results, "w_fast")
+
+        vanilla_mapped = evaluate_kr_map(
+            z=z_samples[:, :NUM_DIMENSIONS],
+            degree=DEGREE,
+            weights_by_component=vanilla_weights,
+            basis_1d=BASIS,
+            tensor_basis=TensorHermiteBasis(),
+        )
+        fast_mapped = evaluate_kr_map(
+            z=z_samples[:, :NUM_DIMENSIONS],
+            degree=DEGREE,
+            weights_by_component=fast_weights,
+            basis_1d=BASIS,
+            tensor_basis=TensorHermiteBasis(),
+        )
+
+        plot_output_dir = os.path.join(
+            os.path.dirname(__file__), "..", "results", "full_experiment_benchmarks"
+        )
+        distribution_plotter = DistributionPlotter(output_dir=plot_output_dir)
+        distribution_plotter.plot_kr_map_distribution_comparison(
+            normal_samples=normal_samples[:, :2],
+            synthetic_samples=z_samples[:, :2],
+            vanilla_mapped_samples=vanilla_mapped[:, :2],
+            fast_mapped_samples=fast_mapped[:, :2],
+            filename=(
+                f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
+                f"SEED={SEED}_M={NUM_PARTICLES}.png"
+            ),
+            show=False,
+        )
+
     print("\nCompleted n-dimensional KR component benchmark.")
-    print(f"Saved {len(results)} figure(s) in results/dykstra_benchmarks.")
+    num_component_figures = len(results) if PLOT_DYKSTRA_ITERATES else 0
+    num_distribution_figures = 1 if PLOT_DISTRIBUTION_COMPARISON else 0
+    print(
+        "Saved "
+        f"{num_component_figures} component error figure(s) and "
+        f"{num_distribution_figures} distribution comparison figure(s) "
+        "in results/dykstra_benchmarks."
+    )
     return results
 
 
 if __name__ == "__main__":
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 100
+    NUM_PARTICLES = 1000
     SEED = 42
 
-    LEARNING_RATE = 0.01
-    MAX_OUTER_ITER = 3
+    LEARNING_RATE = 0.001
+    MAX_OUTER_ITER = 10
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": True}
     DEGREE = 3
     BASIS = HermiteBasis()
+    GRADIENT_CLIP_VALUE = 10.0
+    PLOT_DYKSTRA_ITERATES = False
+    PLOT_DISTRIBUTION_COMPARISON = True
 
     W_INIT: dict[int, np.ndarray] = {}
 
     for component_dim in range(1, NUM_DIMENSIONS + 1):
-        num_coefficients = (DEGREE + 1) ** component_dim
-
-        w_init_component = np.zeros(num_coefficients)
-        if num_coefficients > 1:
-            w_init_component[1] = 1.0
-
-        W_INIT[component_dim] = w_init_component
+        W_INIT[component_dim] = build_identity_initial_guess(
+            component_dim=component_dim,
+            degree=DEGREE,
+        )
 
     ENFORCE_MATCHING = False
 

@@ -36,11 +36,13 @@ class ProjectedGradientDescent:
         learning_rate: float,
         max_outer_iter: int,
         projection_solver_class: type,
+        gradient_clip_value: float | None = None,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
         self.max_outer_iter = max_outer_iter
         self.projection_solver_class = projection_solver_class
+        self.gradient_clip_value = gradient_clip_value
         self.dykstra_kwargs = dykstra_kwargs
 
     def optimise(
@@ -98,6 +100,9 @@ class ProjectedGradientDescent:
 
         for _ in range(self.max_outer_iter):
             grad = gradient_fn(w)
+            if self.gradient_clip_value is not None:
+                clip_value = abs(float(self.gradient_clip_value))
+                grad = np.clip(grad, -clip_value, clip_value)
             w_tilde = w - self.learning_rate * grad
 
             solver = self.projection_solver_class(
