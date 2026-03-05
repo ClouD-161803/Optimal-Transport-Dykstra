@@ -367,140 +367,144 @@ class KRMapComponent:
         return A, b
 
 
-def assemble_component_weights(
-    component_results: list[dict],
-    weight_key: str,
-) -> dict[int, np.ndarray]:
-    """Assemble KR component weights from benchmark outputs.
-
-    Parameters
-    ----------
-    component_results : list of dict
-        Per-component benchmark outputs containing ``component_dim`` and
-        the requested weight vector key.
-    weight_key : str
-        Dictionary key for the weight vector, for example ``"w_vanilla"``
-        or ``"w_fast"``.
-
-    Returns
-    -------
-    dict[int, np.ndarray]
-        Mapping ``component_dimension -> coefficient_vector``.
+class KRMap:
+    """Orchestrator for assembling and evaluating n-dimensional KR maps.
     """
-    weights_by_component: dict[int, np.ndarray] = {}
 
-    for result in component_results:
-        if "component_dim" not in result:
-            raise ValueError("Each component result must include 'component_dim'.")
-        if weight_key not in result:
-            raise ValueError(f"Missing weight key '{weight_key}' in component result.")
+    def __init__(
+        self,
+        degree: int,
+        basis_1d: Basis | None = None,
+        tensor_basis: Basis | None = None,
+        log_epsilon: float = 1e-8,
+    ) -> None:
+        self.degree = degree
+        self.basis_1d = basis_1d if basis_1d is not None else HermiteBasis()
+        self.tensor_basis = (
+            tensor_basis if tensor_basis is not None else TensorHermiteBasis()
+        )
+        self.log_epsilon = log_epsilon
 
-        component_dim = int(result["component_dim"])
-        weights_by_component[component_dim] = np.asarray(result[weight_key]).reshape(-1)
+    def basis_for_component(self, component_dim: int) -> Basis:
+        """Return basis object for the given component dimension."""
+        if component_dim < 1:
+            raise ValueError("component_dim must be >= 1.")
+        return self.basis_1d if component_dim == 1 else self.tensor_basis
 
-    return weights_by_component
+    def make_component(self, data: np.ndarray) -> KRMapComponent:
+        """Build a KRMapComponent with the correct basis for its dimension."""
+        arr = np.asarray(data)
+        if arr.ndim == 1:
+            component_dim = 1
+        elif arr.ndim == 2:
+            component_dim = arr.shape[1]
+        else:
+            raise ValueError("data must have shape (M,) or (M, k).")
 
+        return KRMapComponent(
+            data=arr,
+            basis=self.basis_for_component(component_dim),
+            degree=self.degree,
+            log_epsilon=self.log_epsilon,
+        )
 
-def get_tensor_identity_term_index(component_dim: int, degree: int) -> int:
-    """Return the coefficient index for ``He_0...He_0 He_1``.
+    def get_tensor_identity_term_index(self, component_dim: int) -> int:
+        """Return index for tensor term ``He_0...He_0 He_1``."""
+        if component_dim < 1:
+            raise ValueError("component_dim must be >= 1.")
+        if self.degree < 1:
+            raise ValueError("degree must be >= 1 to represent the identity term.")
 
-    For a ``component_dim``-dimensional KR component with tensor Hermite basis,
-    this identifies the term corresponding to the identity initial map in the
-    last variable:
+        multi_idx = np.asarray(
+            list(product(range(self.degree + 1), repeat=component_dim)),
+            dtype=int,
+        )
+        target = np.zeros(component_dim, dtype=int)
+        target[-1] = 1
 
-    ``He_0(z_1) * ... * He_0(z_{k-1}) * He_1(z_k)``.
-    """
-    if component_dim < 1:
-        raise ValueError("component_dim must be >= 1.")
-    if degree < 1:
-        raise ValueError("degree must be >= 1 to represent the identity term.")
+        matches = np.where(np.all(multi_idx == target, axis=1))[0]
+        if matches.size != 1:
+            raise RuntimeError("Unable to uniquely identify tensor identity term index.")
 
-    multi_idx = np.asarray(
-        list(product(range(degree + 1), repeat=component_dim)),
-        dtype=int,
-    )
-    target = np.zeros(component_dim, dtype=int)
-    target[-1] = 1
+        return int(matches[0])
 
-    matches = np.where(np.all(multi_idx == target, axis=1))[0]
-    if matches.size != 1:
-        raise RuntimeError("Unable to uniquely identify tensor identity term index.")
+    def build_identity_initial_guess(self, component_dim: int) -> np.ndarray:
+        """Build identity-map initial guess for one KR component."""
+        num_coefficients = (self.degree + 1) ** component_dim
+        w_init = np.zeros(num_coefficients, dtype=float)
+        identity_idx = self.get_tensor_identity_term_index(component_dim)
+        w_init[identity_idx] = 1.0
+        return w_init
 
-    return int(matches[0])
+    def build_identity_initial_guesses(
+        self,
+        num_dimensions: int,
+    ) -> dict[int, np.ndarray]:
+        """Build identity-map initial guesses for all components 1..num_dimensions."""
+        if num_dimensions < 1:
+            raise ValueError("num_dimensions must be >= 1.")
+        return {
+            component_dim: self.build_identity_initial_guess(component_dim)
+            for component_dim in range(1, num_dimensions + 1)
+        }
 
+    @staticmethod
+    def assemble_component_weights(
+        component_results: list[dict],
+        weight_key: str,
+    ) -> dict[int, np.ndarray]:
+        """Assemble KR component weights from benchmark output dictionaries."""
+        weights_by_component: dict[int, np.ndarray] = {}
 
-def build_identity_initial_guess(component_dim: int, degree: int) -> np.ndarray:
-    """Build an identity-map initial guess for a KR component.
+        for result in component_results:
+            if "component_dim" not in result:
+                raise ValueError("Each component result must include 'component_dim'.")
+            if weight_key not in result:
+                raise ValueError(
+                    f"Missing weight key '{weight_key}' in component result."
+                )
 
-    Returns a zero vector with exactly one coefficient set to ``1.0`` at the
-    tensor term index representing ``He_0...He_0 He_1``.
-    """
-    num_coefficients = (degree + 1) ** component_dim
-    w_init = np.zeros(num_coefficients, dtype=float)
-    identity_idx = get_tensor_identity_term_index(component_dim, degree)
-    w_init[identity_idx] = 1.0
-    return w_init
+            component_dim = int(result["component_dim"])
+            weights_by_component[component_dim] = np.asarray(result[weight_key]).reshape(-1)
 
+        return weights_by_component
 
-def evaluate_kr_map(
-    z: np.ndarray,
-    degree: int,
-    weights_by_component: dict[int, np.ndarray],
-    basis_1d: Basis | None = None,
-    tensor_basis: Basis | None = None,
-) -> np.ndarray:
-    """Evaluate an assembled n-dimensional KR map on input particles.
+    def evaluate(
+        self,
+        z: np.ndarray,
+        weights_by_component: dict[int, np.ndarray],
+    ) -> np.ndarray:
+        """Evaluate assembled KR map on input particles."""
+        z = np.asarray(z)
+        if z.ndim != 2:
+            raise ValueError("z must have shape (M, d).")
 
-    Parameters
-    ----------
-    z : np.ndarray
-        Input particle matrix with shape ``(M, d)``.
-    degree : int
-        Maximum polynomial degree for all components.
-    weights_by_component : dict[int, np.ndarray]
-        Mapping from component dimension ``k`` to coefficient vector for the
-        ``k``-th KR component.
-    basis_1d : Basis, optional
-        Basis to use for the first component. Defaults to ``HermiteBasis``.
-    tensor_basis : Basis, optional
-        Basis to use for components ``k >= 2``. Defaults to
-        ``TensorHermiteBasis``.
+        M, d = z.shape
+        mapped = np.zeros((M, d), dtype=float)
 
-    Returns
-    -------
-    np.ndarray
-        Mapped particles with shape ``(M, d)``.
-    """
-    z = np.asarray(z)
-    if z.ndim != 2:
-        raise ValueError("z must have shape (M, d).")
+        for component_dim in range(1, d + 1):
+            if component_dim not in weights_by_component:
+                raise ValueError(
+                    f"Missing weights for component dimension {component_dim}."
+                )
 
-    M, d = z.shape
-    mapped = np.zeros((M, d), dtype=float)
+            basis = self.basis_for_component(component_dim)
+            component_data = z[:, :component_dim]
+            psi = basis.evaluate(component_data, self.degree)
 
-    basis_1d = basis_1d if basis_1d is not None else HermiteBasis()
-    tensor_basis = tensor_basis if tensor_basis is not None else TensorHermiteBasis()
+            weights = np.asarray(
+                weights_by_component[component_dim],
+                dtype=float,
+            ).reshape(-1)
+            if psi.shape[1] != weights.size:
+                raise ValueError(
+                    f"Weight size mismatch for component {component_dim}: "
+                    f"expected {psi.shape[1]}, got {weights.size}."
+                )
 
-    for component_dim in range(1, d + 1):
-        if component_dim not in weights_by_component:
-            raise ValueError(
-                f"Missing weights for component dimension {component_dim}."
-            )
+            mapped[:, component_dim - 1] = psi @ weights
 
-        basis = basis_1d if component_dim == 1 else tensor_basis
-        component_data = z[:, :component_dim]
-        psi = basis.evaluate(component_data, degree)
-
-        weights = np.asarray(weights_by_component[component_dim], dtype=float).reshape(-1)
-        if psi.shape[1] != weights.size:
-            raise ValueError(
-                f"Weight size mismatch for component {component_dim}: "
-                f"expected {psi.shape[1]}, got {weights.size}."
-            )
-
-        mapped[:, component_dim - 1] = psi @ weights
-
-    return mapped
+        return mapped
 
 
 KRMap1D = KRMapComponent # backwards compatibility alias
