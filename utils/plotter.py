@@ -18,7 +18,6 @@ import numpy as np
 
 from .projection_result import ProjectionResult
 
-SUPTITLE_FONT_SIZE = 14
 TITLE_FONT_SIZE = 12
 AXIS_LABEL_FONT_SIZE = 11
 TICK_LABEL_FONT_SIZE = 10
@@ -176,18 +175,21 @@ class DykstraPlotter(_BasePlotter):
     # Internal helpers
 
     @staticmethod
-    def _classify_iterations(
+    def _classify_and_group(
         squared_errors: np.ndarray,
         stalled_errors: np.ndarray,
         converged_errors: np.ndarray,
-    ) -> list[tuple[str, str]]:
-        """Return a ``(colour, label)`` pair for every iteration index.
+    ) -> list[tuple[tuple[str, str], list[int]]]:
+        """Classify each iteration and group consecutive runs of the same class.
 
-        Categories
-        ----------
+        Each iteration is assigned a ``(colour, label)`` pair:
+
         * **Converged** (green) – ``converged_errors[i]`` is not NaN.
         * **Stalled** (red) – ``stalled_errors[i]`` is not NaN.
         * **Normal** (blue) – everything else.
+
+        Consecutive iterations sharing the same colour are then collected
+        into contiguous groups.
         """
         classification: list[tuple[str, str]] = []
         for i in range(len(squared_errors)):
@@ -197,13 +199,7 @@ class DykstraPlotter(_BasePlotter):
                 classification.append(("tab:red", "Stalled"))
             else:
                 classification.append(("tab:blue", "Normal"))
-        return classification
 
-    @staticmethod
-    def _build_contiguous_groups(
-        classification: list[tuple[str, str]],
-    ) -> list[tuple[tuple[str, str], list[int]]]:
-        """Group consecutive iterations that share the same colour."""
         groups: list[tuple[tuple[str, str], list[int]]] = []
         current_run: list[int] = [0]
         for idx in range(1, len(classification)):
@@ -233,8 +229,7 @@ class DykstraPlotter(_BasePlotter):
                 " and converged_errors set (use track_error=True)."
             )
 
-        classification = self._classify_iterations(sq, st, cv)
-        groups = self._build_contiguous_groups(classification)
+        groups = self._classify_and_group(sq, st, cv)
 
         seen_labels: set[str] = set()
         for g, ((colour, lbl), indices) in enumerate(groups):
