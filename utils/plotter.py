@@ -39,11 +39,27 @@ class _BasePlotter:
         title: str,
         xlabel: str,
         ylabel: str,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
     ) -> None:
         ax.set_title(title, fontsize=TITLE_FONT_SIZE)
         ax.set_xlabel(xlabel, fontsize=AXIS_LABEL_FONT_SIZE)
         ax.set_ylabel(ylabel, fontsize=AXIS_LABEL_FONT_SIZE)
         ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
+        if xlim is not None:
+            ax.set_xlim(xlim[0], xlim[1])
+        if ylim is not None:
+            ax.set_ylim(ylim[0], ylim[1])
+
+    def _save_and_show(
+        self, fig: Figure, filename: str | None, show: bool
+    ) -> Figure:
+        fig.tight_layout()
+        if filename is not None:
+            fig.savefig(os.path.join(self.output_dir, filename), dpi=self.dpi)
+        if show:
+            plt.show()
+        return fig
 
 
 class DykstraPlotter(_BasePlotter):
@@ -106,17 +122,7 @@ class DykstraPlotter(_BasePlotter):
         for ax, label, result in zip(axes, labels, results):
             self._draw_convergence_panel(ax, result, iters, label)
 
-        fig.tight_layout()
-
-        if filename is not None:
-            fig.savefig(
-                os.path.join(self.output_dir, filename), dpi=self.dpi,
-            )
-
-        if show:
-            plt.show()
-
-        return fig
+        return self._save_and_show(fig, filename, show)
 
     def plot_outer_iteration_solver_comparison(
         self,
@@ -164,18 +170,8 @@ class DykstraPlotter(_BasePlotter):
                 f"Outer {outer_idx + 1} — Fast-Forward Dykstra",
             )
 
-        fig.tight_layout()
-
-        if filename_prefix is not None:
-            fig.savefig(
-                os.path.join(self.output_dir, f"{filename_prefix}.png"),
-                dpi=self.dpi,
-            )
-
-        if show:
-            plt.show()
-
-        return fig
+        filename = f"{filename_prefix}.png" if filename_prefix is not None else None
+        return self._save_and_show(fig, filename, show)
 
     # Internal helpers
 
@@ -281,46 +277,21 @@ class DistributionPlotter(_BasePlotter):
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
         panels = [
-            (
-                normal_samples,
-                r"Reference normal $\mathcal{N}(0, I_2)$",
-                "tab:blue",
-            ),
+            (normal_samples, r"Reference normal $\mathcal{N}(0, I_2)$", "tab:blue"),
             (synthetic_samples, "Synthetic distribution", "tab:red"),
-            (
-                mapped_samples,
-                f"Mapped with {solver_label}",
-                "tab:green",
-            ),
+            (mapped_samples, f"Mapped with {solver_label}", "tab:green"),
         ]
 
         for ax, (samples, title, color) in zip(axes, panels):
-            ax.scatter(
-                samples[:, 0],
-                samples[:, 1],
-                alpha=0.5,
-                color=color,
-                edgecolor="k",
-                s=16,
+            self._draw_distribution_panel(
+                ax=ax, samples=samples, title=title,
+                xlabel="$x_1$", ylabel="$x_2$", color=color,
+                s=16, xlim=(-10, 10), ylim=(-10, 10), grid_alpha=0.4,
             )
-            self._style_axis(
-                ax=ax,
-                title=title,
-                xlabel="$x_1$",
-                ylabel="$x_2$",
-            )
-            ax.grid(True, linestyle="--", alpha=0.4)
-            ax.axis("equal")
 
-        fig.tight_layout()
-
-        out_name = filename or "kr_map_distribution_single_solver.png"
-        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
-
-        if show:
-            plt.show()
-
-        return fig
+        return self._save_and_show(
+            fig, filename or "kr_map_distribution_single_solver.png", show
+        )
 
     def plot_kr_map_distribution_comparison(
         self,
@@ -343,51 +314,22 @@ class DistributionPlotter(_BasePlotter):
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
         panels = [
-            (
-                normal_samples,
-                r"Reference normal $\mathcal{N}(0, I_2)$",
-                "tab:blue",
-            ),
+            (normal_samples, r"Reference normal $\mathcal{N}(0, I_2)$", "tab:blue"),
             (synthetic_samples, "Synthetic distribution", "tab:red"),
-            (
-                vanilla_mapped_samples,
-                "Mapped with vanilla Dykstra",
-                "tab:green",
-            ),
-            (
-                fast_mapped_samples,
-                "Mapped with fast-forward Dykstra",
-                "tab:purple",
-            ),
+            (vanilla_mapped_samples, "Mapped with vanilla Dykstra", "tab:green"),
+            (fast_mapped_samples, "Mapped with fast-forward Dykstra", "tab:purple"),
         ]
 
         for ax, (samples, title, color) in zip(axes.flatten(), panels):
-            ax.scatter(
-                samples[:, 0],
-                samples[:, 1],
-                alpha=0.5,
-                color=color,
-                edgecolor="k",
-                s=16,
+            self._draw_distribution_panel(
+                ax=ax, samples=samples, title=title,
+                xlabel="$x_1$", ylabel="$x_2$", color=color,
+                s=16, grid_alpha=0.4,
             )
-            self._style_axis(
-                ax=ax,
-                title=title,
-                xlabel="$x_1$",
-                ylabel="$x_2$",
-            )
-            ax.grid(True, linestyle="--", alpha=0.4)
-            ax.axis("equal")
 
-        fig.tight_layout()
-
-        out_name = filename or "kr_map_distribution_comparison.png"
-        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
-
-        if show:
-            plt.show()
-
-        return fig
+        return self._save_and_show(
+            fig, filename or "kr_map_distribution_comparison.png", show
+        )
 
     def plot_distributions(
         self,
@@ -402,31 +344,19 @@ class DistributionPlotter(_BasePlotter):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
         self._draw_distribution_panel(
-            ax=ax1,
-            samples=zeta,
+            ax=ax1, samples=zeta,
             title=r"Standard normal $\mathcal{N}(0, I_2)$",
-            xlabel="$z_1$",
-            ylabel="$z_2$",
-            color="blue",
+            xlabel="$z_1$", ylabel="$z_2$", color="blue",
         )
         self._draw_distribution_panel(
-            ax=ax2,
-            samples=z,
+            ax=ax2, samples=z,
             title="Crescent distribution",
-            xlabel="$x_1$",
-            ylabel="$x_2$",
-            color="red",
+            xlabel="$x_1$", ylabel="$x_2$", color="red",
         )
 
-        fig.tight_layout()
-
-        out_name = filename or f"synthetic_distribution_SEED={seed}_M={m}.png"
-        fig.savefig(os.path.join(self.output_dir, out_name), dpi=self.dpi)
-
-        if show:
-            plt.show()
-
-        return fig
+        return self._save_and_show(
+            fig, filename or f"synthetic_distribution_SEED={seed}_M={m}.png", show
+        )
 
     def _draw_distribution_panel(
         self,
@@ -436,6 +366,10 @@ class DistributionPlotter(_BasePlotter):
         xlabel: str,
         ylabel: str,
         color: str,
+        s: int = 20,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        grid_alpha: float = 0.6,
     ) -> None:
         ax.scatter(
             samples[:, 0],
@@ -443,8 +377,12 @@ class DistributionPlotter(_BasePlotter):
             alpha=0.5,
             color=color,
             edgecolor="k",
-            s=20,
+            s=s,
         )
         self._style_axis(ax=ax, title=title, xlabel=xlabel, ylabel=ylabel)
-        ax.grid(True, linestyle="--", alpha=0.6)
-        ax.axis("equal")
+        ax.grid(True, linestyle="--", alpha=grid_alpha)
+        ax.set_aspect("equal", adjustable="box")
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
