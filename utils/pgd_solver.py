@@ -29,6 +29,13 @@ class ProjectedGradientDescent:
         ``projection_solver_class`` on every inner instantiation (e.g.
         ``max_iter`` for the inner Dykstra loop, ``track_error``,
         ``delete_spaces``).
+    gradient_clip_value : float or None, optional
+        If given, gradients are clipped element-wise to ``[-v, v]`` before
+        each step.
+    l1_reg : float, optional
+        L1 regularisation strength.  Adds ``l1_reg * ||w||_1`` to the
+        objective and ``l1_reg * sign(w)`` to the gradient.  Default ``0.0``
+        (no regularisation).
     """
 
     def __init__(
@@ -37,12 +44,14 @@ class ProjectedGradientDescent:
         max_outer_iter: int,
         projection_solver_class: type,
         gradient_clip_value: float | None = None,
+        l1_reg: float = 0.0,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
         self.max_outer_iter = max_outer_iter
         self.projection_solver_class = projection_solver_class
         self.gradient_clip_value = gradient_clip_value
+        self.l1_reg = l1_reg
         self.dykstra_kwargs = dykstra_kwargs
 
     def optimise(
@@ -94,12 +103,24 @@ class ProjectedGradientDescent:
 
         inner_max = self.dykstra_kwargs.get("max_iter", 0)
 
-        objective_values: list[float] = [float(objective_fn(w))]
+        def _objective(w: np.ndarray) -> float:
+            val = float(objective_fn(w))
+            if self.l1_reg:
+                val += self.l1_reg * float(np.sum(np.abs(w)))
+            return val
+
+        def _gradient(w: np.ndarray) -> np.ndarray:
+            g = gradient_fn(w)
+            if self.l1_reg:
+                g = g + self.l1_reg * np.sign(w)
+            return g
+
+        objective_values: list[float] = [_objective(w)]
         dykstra_inner_iters: list[int] = []
         projection_results: list[Any] = []
 
         for _ in range(self.max_outer_iter):
-            grad = gradient_fn(w)
+            grad = _gradient(w)
             if self.gradient_clip_value is not None:
                 clip_value = abs(float(self.gradient_clip_value))
                 grad = np.clip(grad, -clip_value, clip_value)
@@ -115,7 +136,7 @@ class ProjectedGradientDescent:
             projection_results.append(result)
             w = result.projection
 
-            objective_values.append(float(objective_fn(w)))
+            objective_values.append(_objective(w))
 
             if (
                 hasattr(result, "squared_errors")

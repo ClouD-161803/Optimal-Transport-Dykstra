@@ -42,12 +42,12 @@ def run_benchmark():
     result_ff = solver_ff.solve()
     time_ff = time.perf_counter() - t0
 
-    print("=" * 60)
+    print("")
     print(f"{'Solver':<30} {'Time (s)':>10} {'Final error':>15}")
-    print("-" * 60)
+    print("")
     print(f"{'Standard Dykstra':<30} {time_std:>10.4f} {result_std.squared_errors[-1]:>15.6e}")  # type: ignore
     print(f"{'Stall-Detection (FF)':<30} {time_ff:>10.4f} {result_ff.squared_errors[-1]:>15.6e}")  # type: ignore
-    print("=" * 60)
+    print("")
     print()
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "dykstra_benchmarks")
@@ -62,7 +62,8 @@ def run_benchmark():
     )
 
 if __name__ == "__main__":
-    SEED = 42
+    SEED = int(time.time() * 1000) % 1000000
+    # SEED = 42
     DIM = 2
     NUM_HALFSPACES = 20
     MARGIN = 0.01

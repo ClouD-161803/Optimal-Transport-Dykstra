@@ -35,6 +35,7 @@ def benchmark_kr_map_components_nd(
     dykstra_kwargs: dict[str, Any],
     run_solver_mode: str,
     gradient_clip_value: float | None,
+    l1_reg: float,
     plot_dykstra_iterates: bool,
     enforce_matching: bool = False,
 ) -> list[dict[str, Any]]:
@@ -65,6 +66,8 @@ def benchmark_kr_map_components_nd(
     gradient_clip_value : float | None
         Elementwise gradient clipping bound for PGD. If ``None``, clipping is
         disabled.
+    l1_reg : float
+        L1 regularisation strength passed to ``ProjectedGradientDescent``.
     plot_dykstra_iterates : bool
         Whether to plot and save per-component Dykstra iterate figures.
     enforce_matching : bool, optional
@@ -124,6 +127,7 @@ def benchmark_kr_map_components_nd(
                 max_outer_iter=max_outer_iter,
                 projection_solver_class=DykstraProjectionSolver,
                 gradient_clip_value=gradient_clip_value,
+                l1_reg=l1_reg,
                 **dykstra_kwargs,
             )
             t0 = time.perf_counter()
@@ -145,6 +149,7 @@ def benchmark_kr_map_components_nd(
                 max_outer_iter=max_outer_iter,
                 projection_solver_class=DykstraStallDetectionSolver,
                 gradient_clip_value=gradient_clip_value,
+                l1_reg=l1_reg,
                 delete_spaces=True,
                 **dykstra_kwargs,
             )
@@ -256,11 +261,12 @@ def run_benchmark() -> list[dict[str, Any]]:
         dykstra_kwargs=DYKSTRA_KWARGS,
         run_solver_mode=solver_mode,
         gradient_clip_value=GRADIENT_CLIP_VALUE,
+        l1_reg=L1_REG,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
 
-    if PLOT_DISTRIBUTION_COMPARISON:
+    if PLOT_DISTRIBUTIONS:
         plot_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "results", "full_experiment_benchmarks"
         )
@@ -324,35 +330,46 @@ def run_benchmark() -> list[dict[str, Any]]:
                 show=False,
             )
 
-    print("\nCompleted n-dimensional KR component benchmark.")
+    print(f"\nCompleted {NUM_DIMENSIONS}-dimensional KR component benchmark with seed {SEED}.")
     num_component_figures = (
         len(results)
         if (PLOT_DYKSTRA_ITERATES and solver_mode == "both")
         else 0
     )
-    num_distribution_figures = 1 if PLOT_DISTRIBUTION_COMPARISON else 0
+    num_distribution_figures = 1 if PLOT_DISTRIBUTIONS else 0
     print(
         "Saved "
         f"{num_component_figures} component error figure(s) and "
         f"{num_distribution_figures} distribution comparison figure(s) "
         "in results/full_experiment_benchmarks."
     )
+
+    print("\nMap weights:")
+    for result in results:
+        dim = result["component_dim"]
+        if "w_vanilla" in result:
+            print(f"  Component {dim} (vanilla): {result['w_vanilla']}")
+        if "w_fast" in result:
+            print(f"  Component {dim} (fast):    {result['w_fast']}")
+
     return results
 
 
 if __name__ == "__main__":
     RUN_SOLVER_MODE = "fast"  # options: "both", "vanilla", "fast"
     ENFORCE_MATCHING = False
+    PLOT_DYKSTRA_ITERATES = False
+    PLOT_DISTRIBUTIONS = True
 
     SEED = int(time.time() * 1000) % 1000000
     # SEED = 42
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 1000
+    NUM_PARTICLES = 500
 
-    LEARNING_RATE = 0.001
-    MAX_OUTER_ITER = 500
-    DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": True}
+    LEARNING_RATE = 0.1
+    MAX_OUTER_ITER = 1000
+    DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": False}
     DEGREE = 3
     BASIS = HermiteBasis()
     KR_MAP = KRMap(
@@ -360,13 +377,10 @@ if __name__ == "__main__":
         basis_1d=BASIS,
         log_epsilon=1e-8,
     )
-    GRADIENT_CLIP_VALUE = 10.0
-    
-    PLOT_DYKSTRA_ITERATES = False
-    PLOT_DISTRIBUTION_COMPARISON = True
+    GRADIENT_CLIP_VALUE = 15.0
+    L1_REG = 0.5
 
     W_INIT: dict[int, np.ndarray] = {}
-
     for component_dim in range(1, NUM_DIMENSIONS + 1):
         W_INIT[component_dim] = KR_MAP.build_identity_initial_guess(component_dim)
 
