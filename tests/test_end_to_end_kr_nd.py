@@ -18,10 +18,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import DykstraPlotter
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DistributionPlotter
-from utils import HermiteBasis, TensorHermiteBasis
-from utils import KRMapComponent
-from utils import assemble_component_weights, evaluate_kr_map
-from utils import build_identity_initial_guess
+from utils import HermiteBasis
+from utils import KRMap
 from utils import ProjectedGradientDescent
 from utils import generate_crescent_data_2d
 
@@ -30,12 +28,11 @@ def benchmark_kr_map_components_nd(
     num_dimensions: int,
     num_particles: int,
     seed: int,
+    kr_map: KRMap,
     initial_guesses_by_component: dict[int, np.ndarray],
     learning_rate: float,
     max_outer_iter: int,
     dykstra_kwargs: dict[str, Any],
-    degree: int,
-    basis: Any,
     gradient_clip_value: float | None,
     plot_dykstra_iterates: bool,
     enforce_matching: bool = False,
@@ -52,6 +49,8 @@ def benchmark_kr_map_components_nd(
         Number of particles (used for summary labelling).
     seed : int, optional
         Random seed (used for summary labelling).
+    kr_map : KRMap
+        KR map orchestrator used to create component models.
     initial_guesses_by_component : dict[int, np.ndarray]
         Initial coefficient vectors keyed by component dimension.
     learning_rate : float, optional
@@ -60,11 +59,6 @@ def benchmark_kr_map_components_nd(
         Number of outer PGD iterations.
     dykstra_kwargs : dict, optional
         Keyword arguments forwarded to Dykstra solvers.
-    degree : int, optional
-        Maximum Hermite degree.
-    basis : Any, optional
-        Basis object for the first component. Higher components use
-        ``TensorHermiteBasis``.
     gradient_clip_value : float | None
         Elementwise gradient clipping bound for PGD. If ``None``, clipping is
         disabled.
@@ -94,13 +88,7 @@ def benchmark_kr_map_components_nd(
 
     for component_dim in range(1, num_dimensions + 1):
         component_data = z[:, :component_dim]
-        component_basis = basis if component_dim == 1 else TensorHermiteBasis()
-
-        kr_model = KRMapComponent(
-            data=component_data,
-            basis=component_basis,
-            degree=degree,
-        )
+        kr_model = kr_map.make_component(component_data)
 
         A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
         if component_dim not in initial_guesses_by_component:
@@ -217,34 +205,27 @@ def run_benchmark() -> list[dict[str, Any]]:
         num_dimensions=NUM_DIMENSIONS,
         num_particles=NUM_PARTICLES,
         seed=SEED,
+        kr_map=KR_MAP,
         initial_guesses_by_component=W_INIT,
         learning_rate=LEARNING_RATE,
         max_outer_iter=MAX_OUTER_ITER,
         dykstra_kwargs=DYKSTRA_KWARGS,
-        degree=DEGREE,
-        basis=BASIS,
         gradient_clip_value=GRADIENT_CLIP_VALUE,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
 
     if PLOT_DISTRIBUTION_COMPARISON:
-        vanilla_weights = assemble_component_weights(results, "w_vanilla")
-        fast_weights = assemble_component_weights(results, "w_fast")
+        vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
+        fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
 
-        vanilla_mapped = evaluate_kr_map(
+        vanilla_mapped = KR_MAP.evaluate(
             z=z_samples[:, :NUM_DIMENSIONS],
-            degree=DEGREE,
             weights_by_component=vanilla_weights,
-            basis_1d=BASIS,
-            tensor_basis=TensorHermiteBasis(),
         )
-        fast_mapped = evaluate_kr_map(
+        fast_mapped = KR_MAP.evaluate(
             z=z_samples[:, :NUM_DIMENSIONS],
-            degree=DEGREE,
             weights_by_component=fast_weights,
-            basis_1d=BASIS,
-            tensor_basis=TensorHermiteBasis(),
         )
 
         plot_output_dir = os.path.join(
@@ -270,21 +251,28 @@ def run_benchmark() -> list[dict[str, Any]]:
         "Saved "
         f"{num_component_figures} component error figure(s) and "
         f"{num_distribution_figures} distribution comparison figure(s) "
-        "in results/dykstra_benchmarks."
+        "in results/full_experiment_benchmarks."
     )
     return results
 
 
 if __name__ == "__main__":
+    SEED = int(time.time() * 1000) % 1000000
+    # SEED = 42
+
     NUM_DIMENSIONS = 2
     NUM_PARTICLES = 1000
-    SEED = 42
 
     LEARNING_RATE = 0.001
-    MAX_OUTER_ITER = 10
+    MAX_OUTER_ITER = 3
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": True}
     DEGREE = 3
     BASIS = HermiteBasis()
+    KR_MAP = KRMap(
+        degree=DEGREE,
+        basis_1d=BASIS,
+        log_epsilon=1e-8,
+    )
     GRADIENT_CLIP_VALUE = 10.0
     PLOT_DYKSTRA_ITERATES = False
     PLOT_DISTRIBUTION_COMPARISON = True
@@ -292,10 +280,7 @@ if __name__ == "__main__":
     W_INIT: dict[int, np.ndarray] = {}
 
     for component_dim in range(1, NUM_DIMENSIONS + 1):
-        W_INIT[component_dim] = build_identity_initial_guess(
-            component_dim=component_dim,
-            degree=DEGREE,
-        )
+        W_INIT[component_dim] = KR_MAP.build_identity_initial_guess(component_dim)
 
     ENFORCE_MATCHING = False
 
