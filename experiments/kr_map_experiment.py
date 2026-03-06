@@ -13,10 +13,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import DykstraPlotter
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DistributionPlotter
+from utils import DataGenerator
 from utils import HermiteBasis
 from utils import KRMap
 from utils import ProjectedGradientDescent
-from utils import generate_crescent_data_2d
 
 def benchmark_kr_map_components_nd(
     z: np.ndarray,
@@ -237,12 +237,11 @@ def run_benchmark() -> list[dict[str, Any]]:
             "PLOT_DYKSTRA_ITERATES=True is only valid when RUN_SOLVER_MODE='both'."
         )
 
-    if NUM_DIMENSIONS == 2:
-        normal_samples, z_samples = generate_crescent_data_2d(NUM_PARTICLES, seed=SEED)
-    else:
-        rng = np.random.default_rng(SEED)
-        normal_samples = rng.normal(size=(NUM_PARTICLES, NUM_DIMENSIONS))
-        z_samples = rng.normal(size=(NUM_PARTICLES, NUM_DIMENSIONS))
+    normal_samples, z_samples = DATA_GENERATOR.generate(
+        num_particles=NUM_PARTICLES,
+        num_dimensions=NUM_DIMENSIONS,
+        seed=SEED,
+    )
 
     results = benchmark_kr_map_components_nd(
         z=z_samples,
@@ -351,13 +350,14 @@ def run_benchmark() -> list[dict[str, Any]]:
 
 
 if __name__ == "__main__":
+
     RUN_SOLVER_MODE = "fast"  # options: "both", "vanilla", "fast"
     ENFORCE_MATCHING = False
     PLOT_DYKSTRA_ITERATES = False
     PLOT_DISTRIBUTIONS = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 43
+    SEED = 44
 
     NUM_DIMENSIONS = 2
     NUM_PARTICLES = 1000
@@ -365,6 +365,14 @@ if __name__ == "__main__":
     LEARNING_RATE = 0.0001
     MAX_OUTER_ITER = 25000
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": False}
+    GRADIENT_CLIP_VALUE = 10.0
+    L1_REG = 1.0
+
+
+    def experiment_shear_function(zeta: np.ndarray) -> np.ndarray:
+        return zeta[:, 0] ** 2
+
+    DATA_GENERATOR = DataGenerator(shear_function=experiment_shear_function)
     DEGREE = 2
     BASIS = HermiteBasis()
     KR_MAP = KRMap(
@@ -372,9 +380,6 @@ if __name__ == "__main__":
         basis_1d=BASIS,
         log_epsilon=1e-8,
     )
-    GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 1.0
-
     W_INIT: dict[int, np.ndarray] = {}
     for component_dim in range(1, NUM_DIMENSIONS + 1):
         W_INIT[component_dim] = KR_MAP.build_identity_initial_guess(component_dim)

@@ -5,7 +5,7 @@ from .projection_solver import (
     DykstraMapHybridSolver,
     DykstraStallDetectionSolver,
 )
-from .data_generator import generate_crescent_data_2d
+from .data_generator import DataGenerator, generate_crescent_data_2d, generate_crescent_data_nd
 from .hermite import hermite_polynomial
 from .optimal_transport import (
     HermiteBasis,
