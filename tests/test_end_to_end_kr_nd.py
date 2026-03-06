@@ -1,9 +1,4 @@
 """End-to-end benchmark for n-dimensional KR map components.
-
-Runs PGD + Dykstra benchmarks component-by-component for a Knothe-Rosenblatt
-map in arbitrary dimension. For each component, this script compares vanilla
-Dykstra against stall-detection Dykstra and saves one figure containing all
-outer-iteration error traces.
 """
 
 import os
@@ -361,24 +356,24 @@ if __name__ == "__main__":
     PLOT_DYKSTRA_ITERATES = False
     PLOT_DISTRIBUTIONS = True
 
-    SEED = int(time.time() * 1000) % 1000000
-    # SEED = 42
+    # SEED = int(time.time() * 1000) % 1000000
+    SEED = 42
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 500
+    NUM_PARTICLES = 1000
 
-    LEARNING_RATE = 0.1
-    MAX_OUTER_ITER = 1000
+    LEARNING_RATE = 0.0001
+    MAX_OUTER_ITER = 20000
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": False}
-    DEGREE = 3
+    DEGREE = 2
     BASIS = HermiteBasis()
     KR_MAP = KRMap(
         degree=DEGREE,
         basis_1d=BASIS,
         log_epsilon=1e-8,
     )
-    GRADIENT_CLIP_VALUE = 15.0
-    L1_REG = 0.5
+    GRADIENT_CLIP_VALUE = 10.0
+    L1_REG = 0.75
 
     W_INIT: dict[int, np.ndarray] = {}
     for component_dim in range(1, NUM_DIMENSIONS + 1):

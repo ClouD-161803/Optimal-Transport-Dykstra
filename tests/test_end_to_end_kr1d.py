@@ -1,9 +1,4 @@
 """End-to-end test for the 1D Knothe-Rosenblatt map optimisation pipeline.
-
-Compares the standard Dykstra projection solver against the stall-detection
-(fast-forward) variant within a Projected Gradient Descent loop, verifying
-that both reach the same optimised coefficients while highlighting the
-wall-clock speedup from avoiding inner-loop stalling.
 """
 
 import os
@@ -117,24 +112,24 @@ def test_dykstra_fast_forward_advantage() -> None:
         show=False,
     )
 
-    print("\n" + "=" * 65)
+    print("\n")
     print("  End-to-End KR1D Test — Dykstra Solver Comparison")
-    print("=" * 65)
+    print("")
     print(f"  Particles  : {num_particles}")
     print(f"  Degree     : {degree}")
     print(f"  Outer iters: {max_outer_iter}")
     print(f"  Inner iters: {dykstra_kwargs['max_iter']}  (per outer step)")
-    print("-" * 65)
+    print("")
     print(f"  {'Solver':<28} {'Time (s)':>10} {'Final obj':>12}")
-    print("-" * 65)
+    print("")
     print(f"  {'Vanilla Dykstra':<28} {time_vanilla:>10.4f} {obj_vanilla:>12.6f}")
     print(f"  {'Stall-Detection Dykstra':<28} {time_fast:>10.4f} {obj_fast:>12.6f}")
-    print("-" * 65)
+    print("")
 
     if time_vanilla > 0:
         speedup: float = time_vanilla / time_fast
         print(f"  Speedup: {speedup:.2f}x")
-    print("=" * 65)
+    print("")
 
     print(f"\n  w_vanilla = {np.array2string(w_vanilla, precision=6)}")
     print(f"  w_fast    = {np.array2string(w_fast, precision=6)}")

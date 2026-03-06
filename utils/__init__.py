@@ -18,7 +18,6 @@ from .pgd_solver import ProjectedGradientDescent
 from .plotter import (
     AXIS_LABEL_FONT_SIZE,
     LEGEND_FONT_SIZE,
-    SUPTITLE_FONT_SIZE,
     TICK_LABEL_FONT_SIZE,
     TITLE_FONT_SIZE,
     DistributionPlotter,
