@@ -13,22 +13,23 @@ class ProjectedGradientDescent:
     step and then projects the result back onto the polyhedral feasible set
     ``{w | A w <= b}`` using a user-supplied Dykstra projection solver.
 
+    The inner Dykstra solver is run with an inexact schedule: at outer
+    iteration ``t`` the stopping tolerance is ``base_tol * t**(-inexact_power)``
+    and the iteration ceiling is ``int(100 * t**1.1)``.  The sequence
+    ``{base_tol * t**(-inexact_power)}`` is summable for ``inexact_power > 1``,
+    satisfying the standard inexact PGD convergence condition.
+
     Parameters
     ----------
     learning_rate : float
-        Step size (alpha) for the gradient descent update.
+        Step size for the gradient descent update.
     max_outer_iter : int
         Maximum number of outer PGD iterations.
     projection_solver_class : type
-        A *class* (not an instance) that implements the Dykstra projection
-        interface.  It must accept at least the keyword arguments ``z``,
-        ``A``, ``b``, and ``max_iter``, and expose a ``solve()`` method
-        that returns an object with a ``.projection`` attribute.
-    **dykstra_kwargs
-        Additional keyword arguments forwarded verbatim to
-        ``projection_solver_class`` on every inner instantiation (e.g.
-        ``max_iter`` for the inner Dykstra loop, ``track_error``,
-        ``delete_spaces``).
+        A *class* (not an instance) implementing the Dykstra projection
+        interface.  It must accept ``z``, ``A``, ``b``, ``max_iter``, and
+        ``min_error`` as keyword arguments and expose a ``solve()`` method
+        returning an object with a ``.projection`` attribute.
     gradient_clip_value : float or None, optional
         If given, gradients are clipped element-wise to ``[-v, v]`` before
         each step.
@@ -36,6 +37,17 @@ class ProjectedGradientDescent:
         L1 regularisation strength.  Adds ``l1_reg * ||w||_1`` to the
         objective and ``l1_reg * sign(w)`` to the gradient.  Default ``0.0``
         (no regularisation).
+    inexact_power : float, optional
+        Exponent for the inexact projection schedule.  At outer iteration
+        ``t``, the inner solver tolerance is ``base_tol * t**(-inexact_power)``
+        and the iteration ceiling is ``int(100 * t**1.1)``.  Default ``1.1``.
+    base_tol : float, optional
+        Base tolerance for the inexact projection schedule.  Default ``1e-3``.
+    **dykstra_kwargs
+        Additional keyword arguments forwarded verbatim to
+        ``projection_solver_class`` on every inner instantiation (e.g.
+        ``track_error``, ``delete_spaces``).  Do not pass ``max_iter`` or
+        ``min_error`` here; both are set dynamically by the inexact schedule.
     """
 
     def __init__(
@@ -45,6 +57,8 @@ class ProjectedGradientDescent:
         projection_solver_class: type,
         gradient_clip_value: float | None = None,
         l1_reg: float = 0.0,
+        inexact_power: float = 1.1,
+        base_tol: float = 1e-3,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
@@ -52,6 +66,12 @@ class ProjectedGradientDescent:
         self.projection_solver_class = projection_solver_class
         self.gradient_clip_value = gradient_clip_value
         self.l1_reg = l1_reg
+        self.inexact_power = inexact_power
+        self.base_tol = base_tol
+        # max_iter and min_error are set dynamically by the inexact schedule;
+        # remove them if an old caller accidentally passes them here.
+        dykstra_kwargs.pop("max_iter", None)
+        dykstra_kwargs.pop("min_error", None)
         self.dykstra_kwargs = dykstra_kwargs
 
     def optimise(
@@ -92,16 +112,12 @@ class ProjectedGradientDescent:
               ``max_outer_iter + 1``, including the initial value).
             * ``"dykstra_inner_iters"`` – list of ``int``, the number of
               inner Dykstra cycles used at each outer iteration (length
-              ``max_outer_iter``).  Recorded as the configured inner
-              ``max_iter`` when the solver does not expose an explicit
-              iteration count.
-            * ``"projection_results"`` – list of projection result
-                objects returned by the inner Dykstra solver, one per outer
-                iteration.
+              ``max_outer_iter``).  Recorded as the dynamic iteration
+              ceiling when the solver does not expose an explicit count.
+            * ``"projection_results"`` – list of projection result objects
+              returned by the inner Dykstra solver, one per outer iteration.
         """
         w = w_init.copy()
-
-        inner_max = self.dykstra_kwargs.get("max_iter", 0)
 
         def _objective(w: np.ndarray) -> float:
             val = float(objective_fn(w))
@@ -119,17 +135,22 @@ class ProjectedGradientDescent:
         dykstra_inner_iters: list[int] = []
         projection_results: list[Any] = []
 
-        for _ in range(self.max_outer_iter):
+        for t in range(1, self.max_outer_iter + 1):
             grad = _gradient(w)
             if self.gradient_clip_value is not None:
                 clip_value = abs(float(self.gradient_clip_value))
                 grad = np.clip(grad, -clip_value, clip_value)
             w_tilde = w - self.learning_rate * grad
 
+            current_tol = self.base_tol * float(t ** -self.inexact_power)
+            current_max_iter = int(100 * (t ** 1.1))
+
             solver = self.projection_solver_class(
                 z=w_tilde,
                 A=A_constraint,
                 b=b_constraint,
+                min_error=current_tol,
+                max_iter=current_max_iter,
                 **self.dykstra_kwargs,
             )
             result = solver.solve()
@@ -144,7 +165,7 @@ class ProjectedGradientDescent:
             ):
                 dykstra_inner_iters.append(len(result.squared_errors) - 1)
             else:
-                dykstra_inner_iters.append(inner_max)
+                dykstra_inner_iters.append(current_max_iter)
 
         history: dict = {
             "objective_value": objective_values,
