@@ -302,7 +302,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                 solver_label="vanilla Dykstra",
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}.png"
                 ),
                 show=False,
             )
@@ -319,7 +319,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                 solver_label="fast-forward Dykstra",
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_fast_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}.png"
                 ),
                 show=False,
             )
@@ -357,16 +357,16 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 44
+    SEED = 42
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 1000
+    NUM_PARTICLES = 500
 
     LEARNING_RATE = 0.0001
-    MAX_OUTER_ITER = 25000
-    DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": False}
+    MAX_OUTER_ITER = 100000
+    DYKSTRA_KWARGS = {"max_iter": 3000, "track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 1.0
+    L1_REG = 0.5
 
 
     def experiment_shear_function(zeta: np.ndarray) -> np.ndarray:
