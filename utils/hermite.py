@@ -2,11 +2,11 @@ import numpy as np
 
 def hermite_polynomial(x: np.ndarray, max_degree: int) -> np.ndarray:
     """
-    Evaluates probabilist's Hermite polynomials He_j(x) up to a maximum degree
+    Evaluates probabilist's Hermite polynomials Heⱼ(x) up to a maximum degree
     using the standard recurrence relation:
-        He_0(x) = 1
-        He_1(x) = x
-        He_{j+1}(x) = x * He_j(x) - j * He_{j-1}(x)
+        He₀(x) = 1
+        He₁(x) = x
+        Heⱼ₊₁(x) = x·Heⱼ(x) − j·Heⱼ₋₁(x)
 
     Args:
         x (np.ndarray): 1D array of input points (e.g., z_1 coordinates of particles).
@@ -14,7 +14,7 @@ def hermite_polynomial(x: np.ndarray, max_degree: int) -> np.ndarray:
 
     Returns:
         np.ndarray: Matrix of shape (len(x), max_degree + 1) where the j-th 
-                    column contains He_j(x) evaluated at all points.
+                    column contains Heⱼ(x) evaluated at all points.
     """
     M = len(x)
     He = np.zeros((M, max_degree + 1))

@@ -357,13 +357,13 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 42
+    SEED = 43
 
     NUM_DIMENSIONS = 2
     NUM_PARTICLES = 1000
 
     LEARNING_RATE = 0.0001
-    MAX_OUTER_ITER = 20000
+    MAX_OUTER_ITER = 25000
     DYKSTRA_KWARGS = {"max_iter": 1000, "track_error": False}
     DEGREE = 2
     BASIS = HermiteBasis()
@@ -373,7 +373,7 @@ if __name__ == "__main__":
         log_epsilon=1e-8,
     )
     GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 0.75
+    L1_REG = 1.0
 
     W_INIT: dict[int, np.ndarray] = {}
     for component_dim in range(1, NUM_DIMENSIONS + 1):

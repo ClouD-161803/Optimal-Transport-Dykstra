@@ -1,6 +1,7 @@
 """
 Projection solvers for projecting a point onto the intersection of half-spaces
 using Dykstra's algorithm and variants.
+Pulled from https://github.com/ClouD-161803/Dykstra-Project
 
 Classes:
     ConvexProjectionSolver: Abstract base class.

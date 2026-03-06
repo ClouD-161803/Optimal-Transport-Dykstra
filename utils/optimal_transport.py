@@ -8,9 +8,6 @@ from .hermite import hermite_polynomial
 
 class Basis(abc.ABC):
     """Abstract base class for polynomial basis families.
-
-    Subclasses must implement methods to evaluate the basis functions and
-    their first derivatives at a set of sample points.
     """
 
     @abc.abstractmethod
@@ -51,7 +48,7 @@ class Basis(abc.ABC):
 class HermiteBasis(Basis):
     """Probabilist's Hermite polynomial basis.
 
-        d/dx He_j(x) = j * He_{j-1}(x)
+        d/dx Heⱼ(x) = j·Heⱼ₋₁(x)
 
     for first derivatives.
     """
@@ -79,7 +76,7 @@ class HermiteBasis(Basis):
     def evaluate_derivative(self, z: np.ndarray, max_degree: int) -> np.ndarray:
         """Evaluate derivatives of probabilist's Hermite polynomials.
 
-        Uses the identity ``d/dx He_j(x) = j * He_{j-1}(x)``.  The 0-th
+        Uses the identity ``d/dx Heⱼ(x) = j·Heⱼ₋₁(x)``.  The 0-th
         column is all zeros because He_0 is constant.
 
         Parameters
@@ -116,15 +113,15 @@ class HermiteBasis(Basis):
 class TensorHermiteBasis(Basis):
     """Tensor-product probabilist's Hermite basis in arbitrary dimension.
 
-    For each particle ``z_i = (z_{i,1}, ..., z_{i,k})`` and multi-index
-    ``j = (j_1, ..., j_k)``, the basis term is
+    For each particle zᵢ = (zᵢ,₁, …, zᵢ,ₖ) and multi-index
+    j = (j₁, …, jₖ), the basis term is
 
-    ``He_{j_1}(z_{i,1}) * ... * He_{j_k}(z_{i,k})``.
+    Heⱼ₁(zᵢ,₁) · … · Heⱼₖ(zᵢ,ₖ).
 
     The derivative matrix is the partial derivative with respect to the last
     coordinate only:
 
-    ``∂/∂z_k [Π_{r=1}^k He_{j_r}(z_r)]``.
+    ∂/∂zₖ [ ∏ᵣ₌₁ᵏ Heⱼᵣ(zᵣ) ].
     """
 
     @staticmethod
@@ -294,11 +291,9 @@ class KRMapComponent:
     def objective(self, w: np.ndarray) -> float:
         """Compute the negative log-likelihood objective.
 
-        .. math::
+                Objective (using ε-stabilisation):
 
-                 f(w) = \\frac{1}{M} \\sum_{i=1}^{M}
-                   \\left[\\frac{1}{2}(\\Psi_i w)^2
-                   - \\ln(\\nabla\\Psi_i w)\\right]
+                        f(w) = (1/M) Σᵢ [ ½(Ψᵢw)² − ln(max(∇Ψᵢw + ε, ε)) ]
 
         Parameters
         ----------
@@ -318,11 +313,9 @@ class KRMapComponent:
     def gradient(self, w: np.ndarray) -> np.ndarray:
         """Compute the gradient of the negative log-likelihood.
 
-        .. math::
+        Gradient (using ε-stabilisation):
 
-            \\nabla f(w) = \\frac{1}{M}
-                \\left[\\Psi^T (\\Psi w)
-                - (\\nabla\\Psi)^T \\frac{1}{\\nabla\\Psi\\, w}\\right]
+            ∇f(w) = (1/M) [ Ψᵀ(Ψw) − (∇Ψ)ᵀ(1 / max(∇Ψ·w + ε, ε)) ]
 
         Parameters
         ----------
@@ -379,9 +372,9 @@ class KRMap:
         log_epsilon: float = 1e-8,
     ) -> None:
         self.degree = degree
-        self.basis_1d = basis_1d if basis_1d is not None else HermiteBasis()
+        self.basis_1d = basis_1d if basis_1d is not None else HermiteBasis() # fallback
         self.tensor_basis = (
-            tensor_basis if tensor_basis is not None else TensorHermiteBasis()
+            tensor_basis if tensor_basis is not None else TensorHermiteBasis() # fallback
         )
         self.log_epsilon = log_epsilon
 
