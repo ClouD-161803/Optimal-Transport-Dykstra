@@ -229,6 +229,20 @@ class DykstraPlotter(_BasePlotter):
                 " and converged_errors set (use track_error=True)."
             )
 
+        self._style_axis(ax=ax, title=title, xlabel="Iteration", ylabel="Squared error")
+        ax.grid(True, which="both", alpha=0.3)
+
+        if not np.any(sq > 0):
+            ax.text(
+                0.5, 0.5,
+                "Iterate strictly feasible\n(projection trivial)",
+                transform=ax.transAxes,
+                ha="center", va="center",
+                fontsize=LEGEND_FONT_SIZE,
+                color="tab:green",
+            )
+            return
+
         groups = self._classify_and_group(sq, st, cv)
 
         seen_labels: set[str] = set()
@@ -245,14 +259,7 @@ class DykstraPlotter(_BasePlotter):
                 color=colour, markersize=3, label=label_arg,
             )
 
-        self._style_axis(
-            ax=ax,
-            title=title,
-            xlabel="Iteration",
-            ylabel="Squared error",
-        )
         ax.legend(fontsize=LEGEND_FONT_SIZE)
-        ax.grid(True, which="both", alpha=0.3)
 
 
 class DistributionPlotter(_BasePlotter):

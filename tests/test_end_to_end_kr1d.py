@@ -49,7 +49,7 @@ def test_dykstra_fast_forward_advantage() -> None:
 
     learning_rate: float = 0.01
     max_outer_iter: int = 3
-    dykstra_kwargs: dict = {"max_iter": 1000, "track_error": True}
+    dykstra_kwargs: dict = {"track_error": True}
 
     # Step 5a – Vanilla Dykstra
     pgd_vanilla = ProjectedGradientDescent(
@@ -118,7 +118,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     print(f"  Particles  : {num_particles}")
     print(f"  Degree     : {degree}")
     print(f"  Outer iters: {max_outer_iter}")
-    print(f"  Inner iters: {dykstra_kwargs['max_iter']}  (per outer step)")
+    print(f"  Inner iters: inexact schedule (base_tol=1e-3, power=1.1)")
     print("")
     print(f"  {'Solver':<28} {'Time (s)':>10} {'Final obj':>12}")
     print("")
