@@ -10,12 +10,10 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import DykstraPlotter
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
-from utils import DistributionPlotter
+from utils import DykstraPlotter, DistributionPlotter
 from utils import DataGenerator
-from utils import HermiteBasis
-from utils import KRMap
+from utils import HermiteBasis, KRMap
 from utils import ProjectedGradientDescent
 
 def benchmark_kr_map_components_nd(
@@ -32,7 +30,6 @@ def benchmark_kr_map_components_nd(
     gradient_clip_value: float | None,
     l1_reg: float,
     inexact_power: float,
-    base_tol: float,
     plot_dykstra_iterates: bool,
     enforce_matching: bool = False,
 ) -> list[dict[str, Any]]:
@@ -58,8 +55,8 @@ def benchmark_kr_map_components_nd(
         Number of outer PGD iterations.
     dykstra_kwargs : dict
         Extra keyword arguments forwarded to Dykstra solvers (e.g.
-        ``track_error``, ``delete_spaces``).  Do not include ``max_iter``
-        or ``min_error``; both are set by the inexact schedule.
+        ``track_error``, ``delete_spaces``).  Do not include ``max_iter``;
+        it is set dynamically by the schedule.
     run_solver_mode : str
         Solver execution mode: ``"both"``, ``"vanilla"``, or ``"fast"``.
     gradient_clip_value : float | None
@@ -68,10 +65,8 @@ def benchmark_kr_map_components_nd(
     l1_reg : float
         L1 regularisation strength passed to ``ProjectedGradientDescent``.
     inexact_power : float
-        Exponent for the inexact Dykstra schedule; see
+        Exponent controlling how fast the inner Dykstra budget grows; see
         ``ProjectedGradientDescent`` for details.
-    base_tol : float
-        Base tolerance for the inexact Dykstra schedule.
     plot_dykstra_iterates : bool
         Whether to plot and save per-component Dykstra iterate figures.
     enforce_matching : bool, optional
@@ -133,7 +128,6 @@ def benchmark_kr_map_components_nd(
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 inexact_power=inexact_power,
-                base_tol=base_tol,
                 **dykstra_kwargs,
             )
             t0 = time.perf_counter()
@@ -157,7 +151,6 @@ def benchmark_kr_map_components_nd(
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 inexact_power=inexact_power,
-                base_tol=base_tol,
                 delete_spaces=True,
                 **dykstra_kwargs,
             )
@@ -270,7 +263,6 @@ def run_benchmark() -> list[dict[str, Any]]:
         gradient_clip_value=GRADIENT_CLIP_VALUE,
         l1_reg=L1_REG,
         inexact_power=INEXACT_POWER,
-        base_tol=BASE_TOL,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
@@ -375,15 +367,14 @@ if __name__ == "__main__":
     SEED = 42
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 500
+    NUM_PARTICLES = 100
 
-    LEARNING_RATE = 0.0001
-    MAX_OUTER_ITER = 100000
+    LEARNING_RATE = 0.001
+    MAX_OUTER_ITER = 100
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
     L1_REG = 0.5
     INEXACT_POWER = 1.1
-    BASE_TOL = 1e-3
 
 
     def experiment_shear_function(zeta: np.ndarray) -> np.ndarray:
