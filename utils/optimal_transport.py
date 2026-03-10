@@ -332,6 +332,35 @@ class KRMapComponent:
         safe_dPsi_w = np.maximum(dPsi_w + self.log_epsilon, self.log_epsilon)
         return (self.Psi.T @ Psi_w - self.dPsi.T @ (1.0 / safe_dPsi_w)) / self.M
 
+    def gradient_batch(self, w: np.ndarray, idx: np.ndarray) -> np.ndarray:
+        """Compute the stochastic gradient over a mini-batch of particle indices.
+
+        Uses the same formula as ``gradient`` but restricted to rows *idx*:
+
+            ∇f̂(w) = (1/B) [ Ψ_Bᵀ(Ψ_B w) − (∇Ψ_B)ᵀ(1 / max(∇Ψ_B·w + ε, ε)) ]
+
+        where B = ``len(idx)`` and Ψ_B = ``self.Psi[idx]``.
+
+        Parameters
+        ----------
+        w : np.ndarray
+            Coefficient vector, shape ``(n_terms,)``.
+        idx : np.ndarray
+            Integer array of particle indices to include in the batch,
+            shape ``(B,)``.  Must be valid row indices into ``self.Psi``.
+
+        Returns
+        -------
+        np.ndarray
+            Stochastic gradient vector, shape ``(n_terms,)``.
+        """
+        Psi_b = self.Psi[idx]
+        dPsi_b = self.dPsi[idx]
+        Psi_w = Psi_b @ w
+        dPsi_w = dPsi_b @ w
+        safe_dPsi_w = np.maximum(dPsi_w + self.log_epsilon, self.log_epsilon)
+        return (Psi_b.T @ Psi_w - dPsi_b.T @ (1.0 / safe_dPsi_w)) / len(idx)
+
     def get_polyhedral_constraints(
         self, epsilon: float = 1e-4
     ) -> tuple[np.ndarray, np.ndarray]:

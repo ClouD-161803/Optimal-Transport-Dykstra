@@ -14,9 +14,9 @@ class ProjectedGradientDescent:
     ``{w | A w <= b}`` using a user-supplied Dykstra projection solver.
 
     The inner Dykstra solver is run with a growing iteration budget: at outer
-    iteration ``t`` the ceiling is ``int(100 * t**inexact_power)``, so early
-    outer steps use a cheap approximate projection and later steps use an
-    increasingly accurate one.
+    iteration ``t`` the ceiling is ``int(base_inner_iter * t**inexact_power)``,
+    so early outer steps use a cheap approximate projection and later steps use
+    an increasingly accurate one.
 
     Parameters
     ----------
@@ -38,8 +38,21 @@ class ProjectedGradientDescent:
         (no regularisation).
     inexact_power : float, optional
         Exponent controlling how fast the inner iteration budget grows.
-        At outer iteration ``t``, the budget is ``int(100 * t**inexact_power)``.
+        At outer iteration ``t``, the budget is
+        ``int(base_inner_iter * t**inexact_power)``.
         Default ``1.1``.
+    base_inner_iter : int, optional
+        Base number of inner Dykstra iterations.  Scaled by
+        ``t**inexact_power`` at each outer step.  Default ``100``.
+    batch_size : int or None, optional
+        If given, the gradient step uses a random mini-batch of this many
+        particle indices instead of the full dataset.  The projection step
+        always uses all constraints.  Requires a ``gradient_batch_fn`` to be
+        passed to :meth:`optimise`.  Default ``None`` (full-batch).
+    rng_seed : int or None, optional
+        Seed for the internal NumPy ``Generator`` used for mini-batch
+        sampling.  Set to a fixed integer for reproducible results.
+        Default ``None`` (random seed).
     **dykstra_kwargs
         Additional keyword arguments forwarded verbatim to
         ``projection_solver_class`` on every inner instantiation (e.g.
@@ -55,6 +68,9 @@ class ProjectedGradientDescent:
         gradient_clip_value: float | None = None,
         l1_reg: float = 0.0,
         inexact_power: float = 1.1,
+        base_inner_iter: int = 100,
+        batch_size: int | None = None,
+        rng_seed: int | None = None,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
@@ -63,6 +79,9 @@ class ProjectedGradientDescent:
         self.gradient_clip_value = gradient_clip_value
         self.l1_reg = l1_reg
         self.inexact_power = inexact_power
+        self.base_inner_iter = base_inner_iter
+        self.batch_size = batch_size
+        self._rng = np.random.default_rng(rng_seed)
         # max_iter is set dynamically by the schedule; remove if accidentally passed.
         dykstra_kwargs.pop("max_iter", None)
         self.dykstra_kwargs = dykstra_kwargs
@@ -74,6 +93,7 @@ class ProjectedGradientDescent:
         gradient_fn: Callable[[np.ndarray], np.ndarray],
         A_constraint: np.ndarray,
         b_constraint: np.ndarray,
+        gradient_batch_fn: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> tuple[np.ndarray, dict]:
         """Run Projected Gradient Descent.
 
@@ -86,12 +106,17 @@ class ProjectedGradientDescent:
             minimise.
         gradient_fn : callable
             A function ``g(w) -> np.ndarray`` returning the gradient of the
-            cost with respect to ``w``.
+            cost with respect to ``w``.  Used when ``batch_size`` is ``None``
+            or no ``gradient_batch_fn`` is supplied.
         A_constraint : np.ndarray
             Constraint matrix of shape ``(m, n)`` defining the polyhedral
             feasible set ``A w <= b``.
         b_constraint : np.ndarray
             Constraint offset vector of shape ``(m,)``.
+        gradient_batch_fn : callable or None, optional
+            A function ``g(w, idx) -> np.ndarray`` returning the stochastic
+            gradient estimated from particle indices *idx*.  Required when
+            ``batch_size`` is set; ignored otherwise.
 
         Returns
         -------
@@ -111,6 +136,7 @@ class ProjectedGradientDescent:
               returned by the inner Dykstra solver, one per outer iteration.
         """
         w = w_init.copy()
+        M_particles: int = A_constraint.shape[0]
 
         def _objective(w: np.ndarray) -> float:
             val = float(objective_fn(w))
@@ -128,14 +154,23 @@ class ProjectedGradientDescent:
         dykstra_inner_iters: list[int] = []
         projection_results: list[Any] = []
 
+        use_sgd = self.batch_size is not None and gradient_batch_fn is not None
+
         for t in range(1, self.max_outer_iter + 1):
-            grad = _gradient(w)
+            if use_sgd:
+                idx = self._rng.choice(M_particles, size=self.batch_size, replace=False)
+                grad = gradient_batch_fn(w, idx)  # type: ignore[misc]
+                if self.l1_reg:
+                    grad = grad + self.l1_reg * np.sign(w)
+            else:
+                grad = _gradient(w)
+
             if self.gradient_clip_value is not None:
                 clip_value = abs(float(self.gradient_clip_value))
                 grad = np.clip(grad, -clip_value, clip_value)
             w_tilde = w - self.learning_rate * grad
 
-            current_max_iter = int(100 * (t ** self.inexact_power))
+            current_max_iter = int(self.base_inner_iter * (t ** self.inexact_power))
 
             solver = self.projection_solver_class(
                 z=w_tilde,

@@ -30,7 +30,10 @@ def benchmark_kr_map_components_nd(
     gradient_clip_value: float | None,
     l1_reg: float,
     inexact_power: float,
+    base_inner_iter: int,
     plot_dykstra_iterates: bool,
+    batch_size: int | None = None,
+    rng_seed: int | None = None,
     enforce_matching: bool = False,
 ) -> list[dict[str, Any]]:
     """Benchmark each KR map component up to ``num_dimensions``.
@@ -67,8 +70,17 @@ def benchmark_kr_map_components_nd(
     inexact_power : float
         Exponent controlling how fast the inner Dykstra budget grows; see
         ``ProjectedGradientDescent`` for details.
+    base_inner_iter : int
+        Base number of inner Dykstra iterations; scaled by
+        ``t**inexact_power`` at each outer step.
     plot_dykstra_iterates : bool
         Whether to plot and save per-component Dykstra iterate figures.
+    batch_size : int or None, optional
+        Mini-batch size for the stochastic gradient step.  When ``None``
+        (default) the full gradient is used.
+    rng_seed : int or None, optional
+        Seed for the PGD mini-batch sampling RNG.  ``None`` gives a random
+        seed.
     enforce_matching : bool, optional
         If ``True``, raises when vanilla and fast-forward coefficients differ
         beyond tolerance.
@@ -128,6 +140,9 @@ def benchmark_kr_map_components_nd(
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 inexact_power=inexact_power,
+                base_inner_iter=base_inner_iter,
+                batch_size=batch_size,
+                rng_seed=rng_seed,
                 **dykstra_kwargs,
             )
             t0 = time.perf_counter()
@@ -137,6 +152,7 @@ def benchmark_kr_map_components_nd(
                 gradient_fn=kr_model.gradient,
                 A_constraint=A,
                 b_constraint=b,
+                gradient_batch_fn=kr_model.gradient_batch,
             )
             time_vanilla = time.perf_counter() - t0
 
@@ -151,6 +167,9 @@ def benchmark_kr_map_components_nd(
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 inexact_power=inexact_power,
+                base_inner_iter=base_inner_iter,
+                batch_size=batch_size,
+                rng_seed=rng_seed,
                 delete_spaces=True,
                 **dykstra_kwargs,
             )
@@ -161,6 +180,7 @@ def benchmark_kr_map_components_nd(
                 gradient_fn=kr_model.gradient,
                 A_constraint=A,
                 b_constraint=b,
+                gradient_batch_fn=kr_model.gradient_batch,
             )
             time_fast = time.perf_counter() - t0
 
@@ -263,7 +283,10 @@ def run_benchmark() -> list[dict[str, Any]]:
         gradient_clip_value=GRADIENT_CLIP_VALUE,
         l1_reg=L1_REG,
         inexact_power=INEXACT_POWER,
+        base_inner_iter=BASE_INNER_ITER,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
+        batch_size=BATCH_SIZE,
+        rng_seed=RNG_SEED,
         enforce_matching=ENFORCE_MATCHING,
     )
 
@@ -370,11 +393,15 @@ if __name__ == "__main__":
     NUM_PARTICLES = 100
 
     LEARNING_RATE = 0.001
-    MAX_OUTER_ITER = 100
+    MAX_OUTER_ITER = 1000
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
     L1_REG = 0.5
-    INEXACT_POWER = 1.1
+    # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
+    INEXACT_POWER = 0.0 # 0 for fixed dykstra budget
+    BASE_INNER_ITER = 1000
+    BATCH_SIZE: int | None = None
+    RNG_SEED: int | None = None  # different seed
 
 
     def experiment_shear_function(zeta: np.ndarray) -> np.ndarray:
