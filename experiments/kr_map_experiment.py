@@ -315,7 +315,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
                     f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
@@ -334,7 +334,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
                     f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
@@ -353,7 +353,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_fast_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
                     f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
@@ -405,6 +405,7 @@ if __name__ == "__main__":
     # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
     INEXACT_POWER = 0.0 # 0 for fixed dykstra budget
     BASE_INNER_ITER = 1000
+    MAX_INNER_ITERS = int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
     BATCH_SIZE: int | None = None
     RNG_SEED: int | None = None
     # BATCH_SIZE: int | None = 100
