@@ -118,6 +118,14 @@ class TensorHermiteBasis(Basis):
 
     Heⱼ₁(zᵢ,₁) · … · Heⱼₖ(zᵢ,ₖ).
 
+    This implementation applies total-degree truncation, i.e. only
+    multi-indices with
+
+    j₁ + ··· + jₖ ≤ max_degree
+
+    are retained.  This naturally enforces sparsity and avoids combinatorial
+    explosion from the full tensor product.
+
     The derivative matrix is the partial derivative with respect to the last
     coordinate only:
 
@@ -143,30 +151,31 @@ class TensorHermiteBasis(Basis):
             raise ValueError("Input z must have shape (M, k).")
         return z
 
-    @staticmethod
-    def _multi_indices(k: int, max_degree: int) -> np.ndarray:
-        """Build all tensor-product degree combinations.
+    def _get_degree_combinations(
+        self,
+        num_dims: int,
+        max_degree: int,
+    ) -> list[tuple[int, ...]]:
+        """Build total-degree-truncated degree combinations.
 
         Parameters
         ----------
-        k : int
+        num_dims : int
             Number of dimensions.
         max_degree : int
-            Maximum degree in each dimension.
+            Maximum total polynomial degree.
 
         Returns
         -------
-        np.ndarray
-            Integer matrix of shape ``(n_terms, k)`` containing all
-            combinations of degrees from 0 to ``max_degree``.
+        list[tuple[int, ...]]
+            Degree combinations ``combo`` satisfying
+            ``sum(combo) <= max_degree``.
         """
-        return np.asarray(
-            list(product(range(max_degree + 1), repeat=k)),
-            dtype=int,
-        )
+        combinations = product(range(max_degree + 1), repeat=num_dims)
+        return [combo for combo in combinations if sum(combo) <= max_degree]
 
     def evaluate(self, z: np.ndarray, max_degree: int) -> np.ndarray:
-        """Evaluate the tensor Hermite basis.
+        """Evaluate the total-degree-truncated tensor Hermite basis.
 
         Parameters
         ----------
@@ -178,12 +187,14 @@ class TensorHermiteBasis(Basis):
         Returns
         -------
         np.ndarray
-            Basis matrix with shape ``(M, (max_degree + 1)^k)``.
+            Basis matrix with shape ``(M, n_terms)`` where ``n_terms`` is the
+            number of retained total-degree combinations.
         """
         z = self._validate_input(z)
         M, k = z.shape
 
-        multi_idx = self._multi_indices(k, max_degree)  # (n_terms, k)
+        degree_combinations = self._get_degree_combinations(k, max_degree)
+        multi_idx = np.asarray(degree_combinations, dtype=int)  # (n_terms, k)
         hermite_vals = np.stack(
             [hermite_polynomial(z[:, dim], max_degree) for dim in range(k)],
             axis=1,
@@ -194,7 +205,7 @@ class TensorHermiteBasis(Basis):
         return np.prod(selected, axis=1)  # (M, n_terms)
 
     def evaluate_derivative(self, z: np.ndarray, max_degree: int) -> np.ndarray:
-        """Evaluate the tensor basis derivative in the last variable only.
+        """Evaluate the truncated tensor basis derivative in the last variable only.
 
         Parameters
         ----------
@@ -206,12 +217,14 @@ class TensorHermiteBasis(Basis):
         Returns
         -------
         np.ndarray
-            Derivative basis matrix with shape ``(M, (max_degree + 1)^k)``.
+            Derivative basis matrix with shape ``(M, n_terms)`` where
+            ``n_terms`` is the number of retained total-degree combinations.
         """
         z = self._validate_input(z)
         M, k = z.shape
 
-        multi_idx = self._multi_indices(k, max_degree)  # (n_terms, k)
+        degree_combinations = self._get_degree_combinations(k, max_degree)
+        multi_idx = np.asarray(degree_combinations, dtype=int)  # (n_terms, k)
 
         last_vals = hermite_polynomial(z[:, -1], max_degree)  # (M, max_degree + 1)
         d_last_vals = np.zeros_like(last_vals)
@@ -359,7 +372,8 @@ class KRMapComponent:
         Psi_w = Psi_b @ w
         dPsi_w = dPsi_b @ w
         safe_dPsi_w = np.maximum(dPsi_w + self.log_epsilon, self.log_epsilon)
-        return (Psi_b.T @ Psi_w - dPsi_b.T @ (1.0 / safe_dPsi_w)) / len(idx)
+        batch_size = float(len(idx))
+        return (Psi_b.T @ Psi_w - dPsi_b.T @ (1.0 / safe_dPsi_w)) / batch_size
 
     def get_polyhedral_constraints(
         self, epsilon: float = 1e-4
@@ -437,10 +451,18 @@ class KRMap:
         if self.degree < 1:
             raise ValueError("degree must be >= 1 to represent the identity term.")
 
-        multi_idx = np.asarray(
-            list(product(range(self.degree + 1), repeat=component_dim)),
-            dtype=int,
-        )
+        if isinstance(self.tensor_basis, TensorHermiteBasis):
+            degree_combinations = self.tensor_basis._get_degree_combinations(
+                num_dims=component_dim,
+                max_degree=self.degree,
+            )
+            multi_idx = np.asarray(degree_combinations, dtype=int)
+        else:
+            multi_idx = np.asarray(
+                list(product(range(self.degree + 1), repeat=component_dim)),
+                dtype=int,
+            )
+
         target = np.zeros(component_dim, dtype=int)
         target[-1] = 1
 
@@ -452,7 +474,18 @@ class KRMap:
 
     def build_identity_initial_guess(self, component_dim: int) -> np.ndarray:
         """Build identity-map initial guess for one KR component."""
-        num_coefficients = (self.degree + 1) ** component_dim
+        if component_dim == 1:
+            num_coefficients = self.degree + 1
+        elif isinstance(self.tensor_basis, TensorHermiteBasis):
+            num_coefficients = len(
+                self.tensor_basis._get_degree_combinations(
+                    num_dims=component_dim,
+                    max_degree=self.degree,
+                )
+            )
+        else:
+            num_coefficients = (self.degree + 1) ** component_dim
+
         w_init = np.zeros(num_coefficients, dtype=float)
         identity_idx = self.get_tensor_identity_term_index(component_dim)
         w_init[identity_idx] = 1.0
