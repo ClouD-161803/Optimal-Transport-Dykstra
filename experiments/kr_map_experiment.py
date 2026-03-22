@@ -251,7 +251,6 @@ def benchmark_kr_map_components_nd(
 
     return component_results
 
-
 def run_benchmark() -> list[dict[str, Any]]:
     """Run the n-dimensional KR benchmark using module-level configuration."""
     solver_mode = RUN_SOLVER_MODE.lower()
@@ -315,7 +314,9 @@ def run_benchmark() -> list[dict[str, Any]]:
                 fast_mapped_samples=fast_mapped[:, :2],
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}.png"
+                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
             )
@@ -332,7 +333,9 @@ def run_benchmark() -> list[dict[str, Any]]:
                 solver_label="vanilla Dykstra",
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}.png"
+                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
             )
@@ -349,7 +352,9 @@ def run_benchmark() -> list[dict[str, Any]]:
                 solver_label="fast-forward Dykstra",
                 filename=(
                     f"kr{NUM_DIMENSIONS}d_distribution_fast_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}.png"
+                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
+                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{BASE_INNER_ITER*MAX_OUTER_ITER**INEXACT_POWER}_"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
                 ),
                 show=False,
             )
@@ -390,24 +395,26 @@ if __name__ == "__main__":
     SEED = 42
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 100
+    NUM_PARTICLES = 1000
 
-    LEARNING_RATE = 0.001
-    MAX_OUTER_ITER = 1000
+    LEARNING_RATE = 0.00001
+    MAX_OUTER_ITER = 100000
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 0.5
+    L1_REG = 0.75
     # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
     INEXACT_POWER = 0.0 # 0 for fixed dykstra budget
     BASE_INNER_ITER = 1000
     BATCH_SIZE: int | None = None
-    RNG_SEED: int | None = None  # different seed
+    RNG_SEED: int | None = None
+    # BATCH_SIZE: int | None = 100
+    # RNG_SEED: int | None = SEED + 1  # different seed
 
 
-    def experiment_shear_function(zeta: np.ndarray) -> np.ndarray:
+    def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
         return zeta[:, 0] ** 2
 
-    DATA_GENERATOR = DataGenerator(shear_function=experiment_shear_function)
+    DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION)
     DEGREE = 2
     BASIS = HermiteBasis()
     KR_MAP = KRMap(
