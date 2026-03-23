@@ -53,6 +53,14 @@ class ProjectedGradientDescent:
         Seed for the internal NumPy ``Generator`` used for mini-batch
         sampling.  Set to a fixed integer for reproducible results.
         Default ``None`` (random seed).
+    prune_threshold : float, optional
+        Threshold for Iterative Hard Thresholding (IHT).  Coefficients with
+        absolute value below this threshold are forcibly set to zero and locked
+        for the remainder of the optimisation.  Default ``0.0`` (IHT disabled).
+    prune_interval : int, optional
+        Number of outer iterations between IHT checks.  The mask is updated
+        every ``prune_interval`` iterations when ``prune_threshold > 0.0``.
+        Default ``50``.
     **dykstra_kwargs
         Additional keyword arguments forwarded verbatim to
         ``projection_solver_class`` on every inner instantiation (e.g.
@@ -72,6 +80,8 @@ class ProjectedGradientDescent:
         base_inner_iter: int = 100,
         batch_size: int | None = None,
         rng_seed: int | None = None,
+        prune_threshold: float = 0.0,
+        prune_interval: int = 50,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
@@ -84,6 +94,8 @@ class ProjectedGradientDescent:
         self.base_inner_iter = base_inner_iter
         self.batch_size = batch_size
         self._rng = np.random.default_rng(rng_seed)
+        self.prune_threshold = prune_threshold
+        self.prune_interval = prune_interval
         # max_iter is set dynamically by the schedule; remove if accidentally passed.
         dykstra_kwargs.pop("max_iter", None)
         self.dykstra_kwargs = dykstra_kwargs
@@ -157,6 +169,7 @@ class ProjectedGradientDescent:
         projection_results: list[Any] = []
 
         use_sgd = self.batch_size is not None and gradient_batch_fn is not None
+        active_mask = np.ones_like(w, dtype=bool)
 
         for t in range(1, self.max_outer_iter + 1):
             current_lr = self.learning_rate / (1.0 + self.lr_decay * t)
@@ -172,6 +185,13 @@ class ProjectedGradientDescent:
             if self.gradient_clip_value is not None:
                 clip_value = abs(float(self.gradient_clip_value))
                 grad = np.clip(grad, -clip_value, clip_value)
+
+            # IHT step
+            if self.prune_threshold > 0.0 and t % self.prune_interval == 0:
+                active_mask = active_mask & (np.abs(w) >= self.prune_threshold)
+                w[~active_mask] = 0.0
+            grad[~active_mask] = 0.0
+
             w_tilde = w - current_lr * grad
 
             current_max_iter = int(self.base_inner_iter * (t ** self.inexact_power))
@@ -186,6 +206,8 @@ class ProjectedGradientDescent:
             result = solver.solve()
             projection_results.append(result)
             w = result.projection
+
+            w[~active_mask] = 0.0
 
             objective_values.append(_objective(w))
 

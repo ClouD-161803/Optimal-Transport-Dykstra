@@ -16,6 +16,106 @@ from utils import DataGenerator
 from utils import HermiteBasis, KRMap
 from utils import ProjectedGradientDescent
 
+
+def _build_pgd_solver(
+    projection_solver_class: type,
+    learning_rate: float,
+    max_outer_iter: int,
+    gradient_clip_value: float | None,
+    l1_reg: float,
+    lr_decay: float,
+    inexact_power: float,
+    base_inner_iter: int,
+    batch_size: int | None,
+    rng_seed: int | None,
+    prune_threshold: float,
+    prune_interval: int,
+    dykstra_kwargs: dict[str, Any],
+    delete_spaces: bool = False,
+) -> ProjectedGradientDescent:
+    """Build a configured PGD solver instance for one component run."""
+    solver_kwargs: dict[str, Any] = {
+        "learning_rate": learning_rate,
+        "max_outer_iter": max_outer_iter,
+        "projection_solver_class": projection_solver_class,
+        "gradient_clip_value": gradient_clip_value,
+        "l1_reg": l1_reg,
+        "lr_decay": lr_decay,
+        "inexact_power": inexact_power,
+        "base_inner_iter": base_inner_iter,
+        "batch_size": batch_size,
+        "rng_seed": rng_seed,
+        "prune_threshold": prune_threshold,
+        "prune_interval": prune_interval,
+        **dykstra_kwargs,
+    }
+    if delete_spaces:
+        solver_kwargs["delete_spaces"] = True
+    return ProjectedGradientDescent(**solver_kwargs)
+
+
+def _run_component_optimisation(
+    pgd_solver: ProjectedGradientDescent,
+    component_w_init: np.ndarray,
+    kr_model: Any,
+    A: np.ndarray,
+    b: np.ndarray,
+) -> tuple[np.ndarray, dict[str, Any], float]:
+    """Run one component PGD optimisation and return weights, history, and runtime."""
+    t0 = time.perf_counter()
+    weights, history = pgd_solver.optimise(
+        w_init=component_w_init,
+        objective_fn=kr_model.objective,
+        gradient_fn=kr_model.gradient,
+        A_constraint=A,
+        b_constraint=b,
+        gradient_batch_fn=kr_model.gradient_batch,
+    )
+    elapsed = time.perf_counter() - t0
+    return weights, history, elapsed
+
+
+def _append_solver_result(
+    component_result: dict[str, Any],
+    solver_label: str,
+    weights: np.ndarray,
+    history: dict[str, Any],
+    elapsed: float,
+) -> None:
+    """Append one solver's outputs to a component benchmark result dictionary."""
+    component_result[f"w_{solver_label}"] = weights
+    component_result[f"time_{solver_label}"] = elapsed
+    component_result[f"objective_{solver_label}"] = history["objective_value"][-1]
+    component_result[f"history_{solver_label}"] = history
+
+
+def _print_component_timing(
+    component_dim: int,
+    num_dimensions: int,
+    run_vanilla: bool,
+    run_fast: bool,
+    time_vanilla: float | None,
+    time_fast: float | None,
+    coeff_close: bool | None,
+) -> None:
+    """Print one-line timing summary for the active solver mode(s)."""
+    if run_vanilla and run_fast and time_vanilla is not None and time_fast is not None:
+        print(
+            f"[Component {component_dim}/{num_dimensions}] "
+            f"vanilla={time_vanilla:.4f}s, fast={time_fast:.4f}s, "
+            f"coeff_close={coeff_close}"
+        )
+    elif run_vanilla and time_vanilla is not None:
+        print(
+            f"[Component {component_dim}/{num_dimensions}] "
+            f"vanilla={time_vanilla:.4f}s"
+        )
+    elif run_fast and time_fast is not None:
+        print(
+            f"[Component {component_dim}/{num_dimensions}] "
+            f"fast={time_fast:.4f}s"
+        )
+
 def benchmark_kr_map_components_nd(
     z: np.ndarray,
     num_dimensions: int,
@@ -35,6 +135,8 @@ def benchmark_kr_map_components_nd(
     plot_dykstra_iterates: bool,
     batch_size: int | None = None,
     rng_seed: int | None = None,
+    prune_threshold: float = 0.0,
+    prune_interval: int = 50,
     enforce_matching: bool = False,
 ) -> list[dict[str, Any]]:
     """Benchmark each KR map component up to ``num_dimensions``.
@@ -85,6 +187,11 @@ def benchmark_kr_map_components_nd(
     rng_seed : int or None, optional
         Seed for the PGD mini-batch sampling RNG.  ``None`` gives a random
         seed.
+    prune_threshold : float, optional
+        Threshold for Iterative Hard Thresholding. Coefficients below this
+        threshold are forcibly zeroed and locked. Default ``0.0`` (IHT disabled).
+    prune_interval : int, optional
+        Number of outer iterations between IHT checks. Default ``50``.
     enforce_matching : bool, optional
         If ``True``, raises when vanilla and fast-forward coefficients differ
         beyond tolerance.
@@ -137,10 +244,10 @@ def benchmark_kr_map_components_nd(
         history_vanilla = None
         time_vanilla = None
         if run_vanilla:
-            pgd_vanilla = ProjectedGradientDescent(
+            pgd_vanilla = _build_pgd_solver(
+                projection_solver_class=DykstraProjectionSolver,
                 learning_rate=learning_rate,
                 max_outer_iter=max_outer_iter,
-                projection_solver_class=DykstraProjectionSolver,
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 lr_decay=lr_decay,
@@ -148,27 +255,26 @@ def benchmark_kr_map_components_nd(
                 base_inner_iter=base_inner_iter,
                 batch_size=batch_size,
                 rng_seed=rng_seed,
-                **dykstra_kwargs,
+                prune_threshold=prune_threshold,
+                prune_interval=prune_interval,
+                dykstra_kwargs=dykstra_kwargs,
             )
-            t0 = time.perf_counter()
-            w_vanilla, history_vanilla = pgd_vanilla.optimise(
-                w_init=component_w_init,
-                objective_fn=kr_model.objective,
-                gradient_fn=kr_model.gradient,
-                A_constraint=A,
-                b_constraint=b,
-                gradient_batch_fn=kr_model.gradient_batch,
+            w_vanilla, history_vanilla, time_vanilla = _run_component_optimisation(
+                pgd_solver=pgd_vanilla,
+                component_w_init=component_w_init,
+                kr_model=kr_model,
+                A=A,
+                b=b,
             )
-            time_vanilla = time.perf_counter() - t0
 
         w_fast = None
         history_fast = None
         time_fast = None
         if run_fast:
-            pgd_fast = ProjectedGradientDescent(
+            pgd_fast = _build_pgd_solver(
+                projection_solver_class=DykstraStallDetectionSolver,
                 learning_rate=learning_rate,
                 max_outer_iter=max_outer_iter,
-                projection_solver_class=DykstraStallDetectionSolver,
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
                 lr_decay=lr_decay,
@@ -176,19 +282,18 @@ def benchmark_kr_map_components_nd(
                 base_inner_iter=base_inner_iter,
                 batch_size=batch_size,
                 rng_seed=rng_seed,
+                prune_threshold=prune_threshold,
+                prune_interval=prune_interval,
+                dykstra_kwargs=dykstra_kwargs,
                 delete_spaces=True,
-                **dykstra_kwargs,
             )
-            t0 = time.perf_counter()
-            w_fast, history_fast = pgd_fast.optimise(
-                w_init=component_w_init,
-                objective_fn=kr_model.objective,
-                gradient_fn=kr_model.gradient,
-                A_constraint=A,
-                b_constraint=b,
-                gradient_batch_fn=kr_model.gradient_batch,
+            w_fast, history_fast, time_fast = _run_component_optimisation(
+                pgd_solver=pgd_fast,
+                component_w_init=component_w_init,
+                kr_model=kr_model,
+                A=A,
+                b=b,
             )
-            time_fast = time.perf_counter() - t0
 
         coeff_close = None
         coeff_max_abs_diff = None
@@ -225,37 +330,123 @@ def benchmark_kr_map_components_nd(
             "coefficients_max_abs_diff": coeff_max_abs_diff,
         }
 
-        if run_vanilla and w_vanilla is not None and history_vanilla is not None:
-            component_result["w_vanilla"] = w_vanilla
-            component_result["time_vanilla"] = time_vanilla
-            component_result["objective_vanilla"] = history_vanilla["objective_value"][-1]
-            component_result["history_vanilla"] = history_vanilla
-        if run_fast and w_fast is not None and history_fast is not None:
-            component_result["w_fast"] = w_fast
-            component_result["time_fast"] = time_fast
-            component_result["objective_fast"] = history_fast["objective_value"][-1]
-            component_result["history_fast"] = history_fast
+        if (
+            run_vanilla
+            and w_vanilla is not None
+            and history_vanilla is not None
+            and time_vanilla is not None
+        ):
+            _append_solver_result(
+                component_result=component_result,
+                solver_label="vanilla",
+                weights=w_vanilla,
+                history=history_vanilla,
+                elapsed=time_vanilla,
+            )
+        if (
+            run_fast
+            and w_fast is not None
+            and history_fast is not None
+            and time_fast is not None
+        ):
+            _append_solver_result(
+                component_result=component_result,
+                solver_label="fast",
+                weights=w_fast,
+                history=history_fast,
+                elapsed=time_fast,
+            )
 
         component_results.append(component_result)
 
-        if run_vanilla and run_fast:
-            print(
-                f"[Component {component_dim}/{num_dimensions}] "
-                f"vanilla={time_vanilla:.4f}s, fast={time_fast:.4f}s, "
-                f"coeff_close={coeff_close}"
-            )
-        elif run_vanilla:
-            print(
-                f"[Component {component_dim}/{num_dimensions}] "
-                f"vanilla={time_vanilla:.4f}s"
-            )
-        else:
-            print(
-                f"[Component {component_dim}/{num_dimensions}] "
-                f"fast={time_fast:.4f}s"
-            )
+        _print_component_timing(
+            component_dim=component_dim,
+            num_dimensions=num_dimensions,
+            run_vanilla=run_vanilla,
+            run_fast=run_fast,
+            time_vanilla=time_vanilla,
+            time_fast=time_fast,
+            coeff_close=coeff_close,
+        )
 
     return component_results
+
+
+def build_distribution_filename(prefix: str) -> str:
+    """Build a distribution-plot filename using shared experiment metadata."""
+    return (
+        f"{prefix}"
+        f"SEED={SEED}_M={NUM_PARTICLES}_SGD={BATCH_SIZE}_PGDITERS={MAX_OUTER_ITER:,}_"
+        f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_L1={L1_REG}_"
+        f"LR={LEARNING_RATE:.0e}_{LR_DECAY:.0e}_IHT={PRUNE_INTERVAL}.png"
+    )
+
+
+def _plot_distribution_for_mode(
+    solver_mode: str,
+    distribution_plotter: DistributionPlotter,
+    normal_samples: np.ndarray,
+    z_samples: np.ndarray,
+    results: list[dict[str, Any]],
+    kr_map: KRMap,
+    num_dimensions: int,
+) -> None:
+    """Plot mapped distributions for the selected solver mode."""
+    if solver_mode == "both":
+        vanilla_weights = kr_map.assemble_component_weights(results, "w_vanilla")
+        fast_weights = kr_map.assemble_component_weights(results, "w_fast")
+
+        vanilla_mapped = kr_map.evaluate(
+            z=z_samples[:, :num_dimensions],
+            weights_by_component=vanilla_weights,
+        )
+        fast_mapped = kr_map.evaluate(
+            z=z_samples[:, :num_dimensions],
+            weights_by_component=fast_weights,
+        )
+
+        distribution_plotter.plot_kr_map_distribution_comparison(
+            normal_samples=normal_samples[:, :2],
+            synthetic_samples=z_samples[:, :2],
+            vanilla_mapped_samples=vanilla_mapped[:, :2],
+            fast_mapped_samples=fast_mapped[:, :2],
+            filename=build_distribution_filename(
+                f"kr{num_dimensions}d_distribution_comparison_"
+            ),
+            show=False,
+        )
+    elif solver_mode == "vanilla":
+        vanilla_weights = kr_map.assemble_component_weights(results, "w_vanilla")
+        vanilla_mapped = kr_map.evaluate(
+            z=z_samples[:, :num_dimensions],
+            weights_by_component=vanilla_weights,
+        )
+        distribution_plotter.plot_kr_map_distribution_single_solver(
+            normal_samples=normal_samples[:, :2],
+            synthetic_samples=z_samples[:, :2],
+            mapped_samples=vanilla_mapped[:, :2],
+            solver_label="vanilla Dykstra",
+            filename=build_distribution_filename(
+                f"kr{num_dimensions}d_distribution_vanilla_"
+            ),
+            show=False,
+        )
+    else:
+        fast_weights = kr_map.assemble_component_weights(results, "w_fast")
+        fast_mapped = kr_map.evaluate(
+            z=z_samples[:, :num_dimensions],
+            weights_by_component=fast_weights,
+        )
+        distribution_plotter.plot_kr_map_distribution_single_solver(
+            normal_samples=normal_samples[:, :2],
+            synthetic_samples=z_samples[:, :2],
+            mapped_samples=fast_mapped[:, :2],
+            solver_label="fast-forward Dykstra",
+            filename=build_distribution_filename(
+                f"kr{num_dimensions}d_distribution_fast_"
+            ),
+            show=False,
+        )
 
 def run_benchmark() -> list[dict[str, Any]]:
     """Run the n-dimensional KR benchmark using module-level configuration."""
@@ -293,6 +484,8 @@ def run_benchmark() -> list[dict[str, Any]]:
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
         batch_size=BATCH_SIZE,
         rng_seed=RNG_SEED,
+        prune_threshold=PRUNE_THRESHOLD,
+        prune_interval=PRUNE_INTERVAL,
         enforce_matching=ENFORCE_MATCHING,
     )
 
@@ -301,70 +494,15 @@ def run_benchmark() -> list[dict[str, Any]]:
             os.path.dirname(__file__), "..", "results", "full_experiment_benchmarks"
         )
         distribution_plotter = DistributionPlotter(output_dir=plot_output_dir)
-        if solver_mode == "both":
-            vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
-            fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
-
-            vanilla_mapped = KR_MAP.evaluate(
-                z=z_samples[:, :NUM_DIMENSIONS],
-                weights_by_component=vanilla_weights,
-            )
-            fast_mapped = KR_MAP.evaluate(
-                z=z_samples[:, :NUM_DIMENSIONS],
-                weights_by_component=fast_weights,
-            )
-
-            distribution_plotter.plot_kr_map_distribution_comparison(
-                normal_samples=normal_samples[:, :2],
-                synthetic_samples=z_samples[:, :2],
-                vanilla_mapped_samples=vanilla_mapped[:, :2],
-                fast_mapped_samples=fast_mapped[:, :2],
-                filename=(
-                    f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
-                ),
-                show=False,
-            )
-        elif solver_mode == "vanilla":
-            vanilla_weights = KR_MAP.assemble_component_weights(results, "w_vanilla")
-            vanilla_mapped = KR_MAP.evaluate(
-                z=z_samples[:, :NUM_DIMENSIONS],
-                weights_by_component=vanilla_weights,
-            )
-            distribution_plotter.plot_kr_map_distribution_single_solver(
-                normal_samples=normal_samples[:, :2],
-                synthetic_samples=z_samples[:, :2],
-                mapped_samples=vanilla_mapped[:, :2],
-                solver_label="vanilla Dykstra",
-                filename=(
-                    f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
-                ),
-                show=False,
-            )
-        else:
-            fast_weights = KR_MAP.assemble_component_weights(results, "w_fast")
-            fast_mapped = KR_MAP.evaluate(
-                z=z_samples[:, :NUM_DIMENSIONS],
-                weights_by_component=fast_weights,
-            )
-            distribution_plotter.plot_kr_map_distribution_single_solver(
-                normal_samples=normal_samples[:, :2],
-                synthetic_samples=z_samples[:, :2],
-                mapped_samples=fast_mapped[:, :2],
-                solver_label="fast-forward Dykstra",
-                filename=(
-                    f"kr{NUM_DIMENSIONS}d_distribution_fast_"
-                    f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
-                    f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
-                ),
-                show=False,
-            )
+        _plot_distribution_for_mode(
+            solver_mode=solver_mode,
+            distribution_plotter=distribution_plotter,
+            normal_samples=normal_samples,
+            z_samples=z_samples,
+            results=results,
+            kr_map=KR_MAP,
+            num_dimensions=NUM_DIMENSIONS,
+        )
 
     print(f"\nCompleted {NUM_DIMENSIONS}-dimensional KR component benchmark with seed {SEED}.")
     num_component_figures = (
@@ -399,28 +537,31 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 69
+    SEED = 69420
 
     NUM_DIMENSIONS = 2
     NUM_PARTICLES = 300
 
-    
-    MAX_OUTER_ITER = 100000
+    MAX_OUTER_ITER = 10
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
     L1_REG = 0.0
-    # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    
+
+    # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
     BASE_INNER_ITER = 10
     MAX_INNER_ITERS = 1000 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
-    INEXACT_POWER = np.log(MAX_INNER_ITERS - BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)  # 7385606 # 0 for fixed dykstra budget
+    INEXACT_POWER = np.log(MAX_INNER_ITERS - BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
+    
+    # SGD
     # BATCH_SIZE: int | None = None
     BATCH_SIZE: int | None = 100
     RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None  # different seed
-
     LEARNING_RATE = 0.00001
     LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
 
+    # IHT
+    PRUNE_THRESHOLD = 1e-3
+    PRUNE_INTERVAL = 50
 
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
         return zeta[:, 0] ** 2
