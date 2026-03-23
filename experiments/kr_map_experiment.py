@@ -402,21 +402,24 @@ if __name__ == "__main__":
     SEED = 69
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 500
+    NUM_PARTICLES = 300
 
-    LEARNING_RATE = 0.0001
+    
     MAX_OUTER_ITER = 100000
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 0.1
+    L1_REG = 0.0
     # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    INEXACT_POWER = 0.6 # 0 for fixed dykstra budget
+    
     BASE_INNER_ITER = 10
-    MAX_INNER_ITERS = int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    MAX_INNER_ITERS = 1000 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    INEXACT_POWER = np.log(MAX_INNER_ITERS - BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)  # 7385606 # 0 for fixed dykstra budget
     # BATCH_SIZE: int | None = None
     BATCH_SIZE: int | None = 100
-    LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
     RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None  # different seed
+
+    LEARNING_RATE = 0.00001
+    LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
 
 
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
