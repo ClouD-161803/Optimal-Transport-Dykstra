@@ -155,7 +155,7 @@ class TensorHermiteBasis(Basis):
         self,
         num_dims: int,
         max_degree: int,
-    ) -> list[tuple[int, ...]]:
+    ) -> np.ndarray:
         """Build total-degree-truncated degree combinations.
 
         Parameters
@@ -167,12 +167,15 @@ class TensorHermiteBasis(Basis):
 
         Returns
         -------
-        list[tuple[int, ...]]
+        np.ndarray
             Degree combinations ``combo`` satisfying
-            ``sum(combo) <= max_degree``.
+            ``sum(combo) <= max_degree``, with shape ``(n_terms, num_dims)``.
         """
         combinations = product(range(max_degree + 1), repeat=num_dims)
-        return [combo for combo in combinations if sum(combo) <= max_degree]
+        return np.asarray(
+            [combo for combo in combinations if sum(combo) <= max_degree],
+            dtype=int,
+        )
 
     def evaluate(self, z: np.ndarray, max_degree: int) -> np.ndarray:
         """Evaluate the total-degree-truncated tensor Hermite basis.
@@ -193,8 +196,7 @@ class TensorHermiteBasis(Basis):
         z = self._validate_input(z)
         M, k = z.shape
 
-        degree_combinations = self._get_degree_combinations(k, max_degree)
-        multi_idx = np.asarray(degree_combinations, dtype=int)  # (n_terms, k)
+        multi_idx = self._get_degree_combinations(k, max_degree)  # (n_terms, k)
         hermite_vals = np.stack(
             [hermite_polynomial(z[:, dim], max_degree) for dim in range(k)],
             axis=1,
@@ -223,8 +225,7 @@ class TensorHermiteBasis(Basis):
         z = self._validate_input(z)
         M, k = z.shape
 
-        degree_combinations = self._get_degree_combinations(k, max_degree)
-        multi_idx = np.asarray(degree_combinations, dtype=int)  # (n_terms, k)
+        multi_idx = self._get_degree_combinations(k, max_degree)  # (n_terms, k)
 
         last_vals = hermite_polynomial(z[:, -1], max_degree)  # (M, max_degree + 1)
         d_last_vals = np.zeros_like(last_vals)
@@ -452,11 +453,10 @@ class KRMap:
             raise ValueError("degree must be >= 1 to represent the identity term.")
 
         if isinstance(self.tensor_basis, TensorHermiteBasis):
-            degree_combinations = self.tensor_basis._get_degree_combinations(
+            multi_idx = self.tensor_basis._get_degree_combinations(
                 num_dims=component_dim,
                 max_degree=self.degree,
             )
-            multi_idx = np.asarray(degree_combinations, dtype=int)
         else:
             multi_idx = np.asarray(
                 list(product(range(self.degree + 1), repeat=component_dim)),
