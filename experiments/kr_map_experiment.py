@@ -323,7 +323,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                     f"kr{NUM_DIMENSIONS}d_distribution_comparison_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
                     f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
                 ),
                 show=False,
             )
@@ -342,7 +342,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                     f"kr{NUM_DIMENSIONS}d_distribution_vanilla_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
                     f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
                 ),
                 show=False,
             )
@@ -361,7 +361,7 @@ def run_benchmark() -> list[dict[str, Any]]:
                     f"kr{NUM_DIMENSIONS}d_distribution_fast_"
                     f"SEED={SEED}_M={NUM_PARTICLES}_PGDITERS={MAX_OUTER_ITER}_"
                     f"DYKSTRA_ITERS={BASE_INNER_ITER}_{MAX_INNER_ITERS}_"
-                    f"L1={L1_REG}_SGD={BATCH_SIZE}.png"
+                    f"L1={L1_REG}_SGD={BATCH_SIZE}_LR={LR_DECAY}.png"
                 ),
                 show=False,
             )
@@ -399,25 +399,24 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 42
+    SEED = 69
 
     NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 1000
+    NUM_PARTICLES = 500
 
-    LEARNING_RATE = 0.00001
+    LEARNING_RATE = 0.0001
     MAX_OUTER_ITER = 100000
     DYKSTRA_KWARGS = {"track_error": False}
     GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 0.75
+    L1_REG = 0.1
     # Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    INEXACT_POWER = 0.0 # 0 for fixed dykstra budget
-    BASE_INNER_ITER = 1000
+    INEXACT_POWER = 0.6 # 0 for fixed dykstra budget
+    BASE_INNER_ITER = 10
     MAX_INNER_ITERS = int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
-    BATCH_SIZE: int | None = None
+    # BATCH_SIZE: int | None = None
+    BATCH_SIZE: int | None = 100
     LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
-    RNG_SEED: int | None = None
-    # BATCH_SIZE: int | None = 100
-    # RNG_SEED: int | None = SEED + 1  # different seed
+    RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None  # different seed
 
 
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:

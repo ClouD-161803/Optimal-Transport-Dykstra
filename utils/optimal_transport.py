@@ -428,6 +428,32 @@ class KRMap:
             raise ValueError("component_dim must be >= 1.")
         return self.basis_1d if component_dim == 1 else self.tensor_basis
 
+    def _get_component_degree_combinations(self, component_dim: int) -> np.ndarray:
+        """Return degree combinations used by the active component basis."""
+        if component_dim < 1:
+            raise ValueError("component_dim must be >= 1.")
+
+        if component_dim == 1:
+            return np.arange(self.degree + 1, dtype=int)[:, None]
+
+        if isinstance(self.tensor_basis, TensorHermiteBasis):
+            return self.tensor_basis._get_degree_combinations(
+                num_dims=component_dim,
+                max_degree=self.degree,
+            )
+
+        return np.asarray(
+            list(product(range(self.degree + 1), repeat=component_dim)),
+            dtype=int,
+        )
+
+    def _full_tensor_indices_for_truncated(self, component_dim: int) -> np.ndarray:
+        """Map truncated multi-indices to indices in full tensor-product ordering."""
+        combos = self._get_component_degree_combinations(component_dim)
+        base = self.degree + 1
+        powers = base ** np.arange(component_dim - 1, -1, -1, dtype=int)
+        return (combos * powers).sum(axis=1).astype(int)
+
     def make_component(self, data: np.ndarray) -> KRMapComponent:
         """Build a KRMapComponent with the correct basis for its dimension."""
         arr = np.asarray(data)
@@ -452,16 +478,7 @@ class KRMap:
         if self.degree < 1:
             raise ValueError("degree must be >= 1 to represent the identity term.")
 
-        if isinstance(self.tensor_basis, TensorHermiteBasis):
-            multi_idx = self.tensor_basis._get_degree_combinations(
-                num_dims=component_dim,
-                max_degree=self.degree,
-            )
-        else:
-            multi_idx = np.asarray(
-                list(product(range(self.degree + 1), repeat=component_dim)),
-                dtype=int,
-            )
+        multi_idx = self._get_component_degree_combinations(component_dim)
 
         target = np.zeros(component_dim, dtype=int)
         target[-1] = 1
@@ -474,17 +491,7 @@ class KRMap:
 
     def build_identity_initial_guess(self, component_dim: int) -> np.ndarray:
         """Build identity-map initial guess for one KR component."""
-        if component_dim == 1:
-            num_coefficients = self.degree + 1
-        elif isinstance(self.tensor_basis, TensorHermiteBasis):
-            num_coefficients = len(
-                self.tensor_basis._get_degree_combinations(
-                    num_dims=component_dim,
-                    max_degree=self.degree,
-                )
-            )
-        else:
-            num_coefficients = (self.degree + 1) ** component_dim
+        num_coefficients = self._get_component_degree_combinations(component_dim).shape[0]
 
         w_init = np.zeros(num_coefficients, dtype=float)
         identity_idx = self.get_tensor_identity_term_index(component_dim)
@@ -551,6 +558,20 @@ class KRMap:
                 weights_by_component[component_dim],
                 dtype=float,
             ).reshape(-1)
+
+            expected_num_coefficients = psi.shape[1]
+            full_tensor_num_coefficients = (self.degree + 1) ** component_dim
+            if (
+                component_dim > 1
+                and isinstance(self.tensor_basis, TensorHermiteBasis)
+                and weights.size == full_tensor_num_coefficients
+                and expected_num_coefficients < full_tensor_num_coefficients
+            ):
+                # Allow legacy full-tensor weights by selecting only the active
+                # total-degree-truncated components in consistent ordering.
+                keep_idx = self._full_tensor_indices_for_truncated(component_dim)
+                weights = weights[keep_idx]
+
             if psi.shape[1] != weights.size:
                 raise ValueError(
                     f"Weight size mismatch for component {component_dim}: "
