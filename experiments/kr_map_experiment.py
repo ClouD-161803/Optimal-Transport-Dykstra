@@ -29,6 +29,7 @@ def benchmark_kr_map_components_nd(
     run_solver_mode: str,
     gradient_clip_value: float | None,
     l1_reg: float,
+    lr_decay: float,
     inexact_power: float,
     base_inner_iter: int,
     plot_dykstra_iterates: bool,
@@ -67,6 +68,9 @@ def benchmark_kr_map_components_nd(
         disabled.
     l1_reg : float
         L1 regularisation strength passed to ``ProjectedGradientDescent``.
+    lr_decay : float
+        Learning-rate decay coefficient used in the schedule
+        ``η_t = η_0 / (1 + lr_decay * t)``.
     inexact_power : float
         Exponent controlling how fast the inner Dykstra budget grows; see
         ``ProjectedGradientDescent`` for details.
@@ -139,6 +143,7 @@ def benchmark_kr_map_components_nd(
                 projection_solver_class=DykstraProjectionSolver,
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
+                lr_decay=lr_decay,
                 inexact_power=inexact_power,
                 base_inner_iter=base_inner_iter,
                 batch_size=batch_size,
@@ -166,6 +171,7 @@ def benchmark_kr_map_components_nd(
                 projection_solver_class=DykstraStallDetectionSolver,
                 gradient_clip_value=gradient_clip_value,
                 l1_reg=l1_reg,
+                lr_decay=lr_decay,
                 inexact_power=inexact_power,
                 base_inner_iter=base_inner_iter,
                 batch_size=batch_size,
@@ -281,6 +287,7 @@ def run_benchmark() -> list[dict[str, Any]]:
         run_solver_mode=solver_mode,
         gradient_clip_value=GRADIENT_CLIP_VALUE,
         l1_reg=L1_REG,
+        lr_decay=LR_DECAY,
         inexact_power=INEXACT_POWER,
         base_inner_iter=BASE_INNER_ITER,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
@@ -407,6 +414,7 @@ if __name__ == "__main__":
     BASE_INNER_ITER = 1000
     MAX_INNER_ITERS = int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
     BATCH_SIZE: int | None = None
+    LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
     RNG_SEED: int | None = None
     # BATCH_SIZE: int | None = 100
     # RNG_SEED: int | None = SEED + 1  # different seed

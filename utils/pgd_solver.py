@@ -67,6 +67,7 @@ class ProjectedGradientDescent:
         projection_solver_class: type,
         gradient_clip_value: float | None = None,
         l1_reg: float = 0.0,
+        lr_decay: float = 0.0,
         inexact_power: float = 1.1,
         base_inner_iter: int = 100,
         batch_size: int | None = None,
@@ -78,6 +79,7 @@ class ProjectedGradientDescent:
         self.projection_solver_class = projection_solver_class
         self.gradient_clip_value = gradient_clip_value
         self.l1_reg = l1_reg
+        self.lr_decay = lr_decay
         self.inexact_power = inexact_power
         self.base_inner_iter = base_inner_iter
         self.batch_size = batch_size
@@ -157,6 +159,8 @@ class ProjectedGradientDescent:
         use_sgd = self.batch_size is not None and gradient_batch_fn is not None
 
         for t in range(1, self.max_outer_iter + 1):
+            current_lr = self.learning_rate / (1.0 + self.lr_decay * t)
+
             if use_sgd:
                 idx = self._rng.choice(M_particles, size=self.batch_size, replace=False)
                 grad = gradient_batch_fn(w, idx)  # type: ignore[misc]
@@ -168,7 +172,7 @@ class ProjectedGradientDescent:
             if self.gradient_clip_value is not None:
                 clip_value = abs(float(self.gradient_clip_value))
                 grad = np.clip(grad, -clip_value, clip_value)
-            w_tilde = w - self.learning_rate * grad
+            w_tilde = w - current_lr * grad
 
             current_max_iter = int(self.base_inner_iter * (t ** self.inexact_power))
 
