@@ -1,7 +1,7 @@
 """Projected Gradient Descent solver with a pluggable Dykstra projection step.
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -61,6 +61,11 @@ class ProjectedGradientDescent:
         Number of outer iterations between IHT checks.  The mask is updated
         every ``prune_interval`` iterations when ``prune_threshold > 0.0``.
         Default ``50``.
+    track_error_outer_iterations : list[int] or None, optional
+        If provided, Dykstra residual tracking is enabled only for the
+        requested outer PGD iterations. Negative indices follow Python
+        conventions (e.g. ``-1`` is the final outer iteration), and
+        out-of-range values are ignored.
     **dykstra_kwargs
         Additional keyword arguments forwarded verbatim to
         ``projection_solver_class`` on every inner instantiation (e.g.
@@ -82,6 +87,7 @@ class ProjectedGradientDescent:
         rng_seed: int | None = None,
         prune_threshold: float = 0.0,
         prune_interval: int = 50,
+        track_error_outer_iterations: list[int] | None = None,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
@@ -96,9 +102,44 @@ class ProjectedGradientDescent:
         self._rng = np.random.default_rng(rng_seed)
         self.prune_threshold = prune_threshold
         self.prune_interval = prune_interval
+        self.track_error_outer_iterations = (
+            list(track_error_outer_iterations)
+            if track_error_outer_iterations is not None
+            else None
+        )
         # max_iter is set dynamically by the schedule; remove if accidentally passed.
         dykstra_kwargs.pop("max_iter", None)
         self.dykstra_kwargs = dykstra_kwargs
+
+    @staticmethod
+    def _resolve_outer_iterations(
+        requested_outer_iterations: Sequence[int],
+        max_outer_iter: int,
+    ) -> list[int]:
+        """Resolve user-specified outer iteration indices.
+
+        Negative values are interpreted Python-style (e.g. ``-1`` is the last
+        outer iteration). Out-of-range values are ignored.
+        """
+        resolved: list[int] = []
+        seen: set[int] = set()
+
+        for raw_idx in requested_outer_iterations:
+            if not isinstance(raw_idx, (int, np.integer)):
+                raise TypeError(
+                    "track_error_outer_iterations must contain only integers."
+                )
+            idx = int(raw_idx)
+            if idx < 0:
+                idx += max_outer_iter
+            if idx < 0 or idx >= max_outer_iter:
+                continue
+            if idx in seen:
+                continue
+            seen.add(idx)
+            resolved.append(idx)
+
+        return resolved
 
     def optimise(
         self,
@@ -147,7 +188,12 @@ class ProjectedGradientDescent:
               ``max_outer_iter``).  Recorded as the dynamic iteration
               ceiling when the solver does not expose an explicit count.
             * ``"projection_results"`` – list of projection result objects
-              returned by the inner Dykstra solver, one per outer iteration.
+              returned by the inner Dykstra solver.
+              - Default mode: one per outer iteration.
+              - Selective mode (``track_error_outer_iterations`` is set):
+                only the requested outer iterations are retained.
+            * ``"projection_outer_indices"`` – list of outer-iteration
+              indices corresponding to entries in ``projection_results``.
         """
         w = w_init.copy()
         M_particles: int = A_constraint.shape[0]
@@ -167,11 +213,23 @@ class ProjectedGradientDescent:
         objective_values: list[float] = [_objective(w)]
         dykstra_inner_iters: list[int] = []
         projection_results: list[Any] = []
+        projection_outer_indices: list[int] = []
+
+        selective_tracking = self.track_error_outer_iterations is not None
+        tracked_outer_set: set[int] | None = None
+        if selective_tracking and self.track_error_outer_iterations is not None:
+            tracked_outer_set = set(
+                self._resolve_outer_iterations(
+                    requested_outer_iterations=self.track_error_outer_iterations,
+                    max_outer_iter=self.max_outer_iter,
+                )
+            )
 
         use_sgd = self.batch_size is not None and gradient_batch_fn is not None
         active_mask = np.ones_like(w, dtype=bool)
 
         for t in range(1, self.max_outer_iter + 1):
+            outer_idx = t - 1
             current_lr = self.learning_rate / (1.0 + self.lr_decay * t)
 
             if use_sgd:
@@ -196,15 +254,23 @@ class ProjectedGradientDescent:
 
             current_max_iter = int(self.base_inner_iter * (t ** self.inexact_power))
 
+            solver_kwargs = dict(self.dykstra_kwargs)
+            should_track_this_outer = True
+            if tracked_outer_set is not None:
+                should_track_this_outer = outer_idx in tracked_outer_set
+                solver_kwargs["track_error"] = should_track_this_outer
+
             solver = self.projection_solver_class(
                 z=w_tilde,
                 A=A_constraint,
                 b=b_constraint,
                 max_iter=current_max_iter,
-                **self.dykstra_kwargs,
+                **solver_kwargs,
             )
             result = solver.solve()
-            projection_results.append(result)
+            if tracked_outer_set is None or should_track_this_outer:
+                projection_results.append(result)
+                projection_outer_indices.append(outer_idx)
             w = result.projection
 
             w[~active_mask] = 0.0
@@ -223,6 +289,7 @@ class ProjectedGradientDescent:
             "objective_value": objective_values,
             "dykstra_inner_iters": dykstra_inner_iters,
             "projection_results": projection_results,
+            "projection_outer_indices": projection_outer_indices,
         }
 
         return w, history

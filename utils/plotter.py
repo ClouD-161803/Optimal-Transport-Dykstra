@@ -127,12 +127,13 @@ class DykstraPlotter(_BasePlotter):
         self,
         vanilla_results: Sequence[ProjectionResult],
         fast_forward_results: Sequence[ProjectionResult],
+        outer_indices: Sequence[int] | None = None,
         filename_prefix: str | None = None,
         show: bool = True,
     ) -> Figure:
-        """Plot all outer-iteration solver comparisons on a single figure.
+        """Plot selected outer-iteration solver comparisons on one figure.
 
-        The figure contains one row per outer PGD iteration and two
+        The figure contains one row per plotted outer PGD iteration and two
         columns: vanilla Dykstra (left) and fast-forward Dykstra (right).
         """
         if len(vanilla_results) != len(fast_forward_results):
@@ -141,12 +142,24 @@ class DykstraPlotter(_BasePlotter):
             )
 
         n_outer = len(vanilla_results)
+        if n_outer == 0:
+            raise ValueError(
+                "At least one outer iteration result is required for plotting."
+            )
+
+        if outer_indices is None:
+            outer_indices = list(range(n_outer))
+        elif len(outer_indices) != n_outer:
+            raise ValueError(
+                "outer_indices must have the same length as the results sequences."
+            )
+
         fig, axes = plt.subplots(n_outer, 2, figsize=(12, 4 * n_outer))
         if n_outer == 1:
             axes = np.array([axes])
 
-        for outer_idx, (vanilla_res, fast_res) in enumerate(
-            zip(vanilla_results, fast_forward_results)
+        for row_idx, (outer_idx, vanilla_res, fast_res) in enumerate(
+            zip(outer_indices, vanilla_results, fast_forward_results)
         ):
             vanilla_sq = vanilla_res.squared_errors
             fast_sq = fast_res.squared_errors
@@ -157,16 +170,16 @@ class DykstraPlotter(_BasePlotter):
                 )
 
             self._draw_convergence_panel(
-                axes[outer_idx][0],
+                axes[row_idx][0],
                 vanilla_res,
                 np.arange(len(vanilla_sq)),
-                f"Outer {outer_idx + 1} — Vanilla Dykstra",
+                f"Outer {outer_idx} - Vanilla Dykstra",
             )
             self._draw_convergence_panel(
-                axes[outer_idx][1],
+                axes[row_idx][1],
                 fast_res,
                 np.arange(len(fast_sq)),
-                f"Outer {outer_idx + 1} — Fast-Forward Dykstra",
+                f"Outer {outer_idx} - Fast-Forward Dykstra",
             )
 
         filename = f"{filename_prefix}.png" if filename_prefix is not None else None
@@ -388,3 +401,4 @@ class DistributionPlotter(_BasePlotter):
             ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
+

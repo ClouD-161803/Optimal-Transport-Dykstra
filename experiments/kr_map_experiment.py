@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DykstraPlotter, DistributionPlotter
 from utils import DataGenerator
-from utils import HermiteBasis, KRMap
+from utils import Basis, HermiteBasis, KRMap
 from utils import ProjectedGradientDescent
 
 
@@ -31,6 +31,7 @@ def _build_pgd_solver(
     prune_threshold: float,
     prune_interval: int,
     dykstra_kwargs: dict[str, Any],
+    track_error_outer_iterations: list[int] | None = None,
     delete_spaces: bool = False,
 ) -> ProjectedGradientDescent:
     """Build a configured PGD solver instance for one component run."""
@@ -47,6 +48,7 @@ def _build_pgd_solver(
         "rng_seed": rng_seed,
         "prune_threshold": prune_threshold,
         "prune_interval": prune_interval,
+        "track_error_outer_iterations": track_error_outer_iterations,
         **dykstra_kwargs,
     }
     if delete_spaces:
@@ -133,6 +135,7 @@ def benchmark_kr_map_components_nd(
     inexact_power: float,
     base_inner_iter: int,
     plot_dykstra_iterates: bool,
+    plot_outer_iterations: list[int] | None = None,
     batch_size: int | None = None,
     rng_seed: int | None = None,
     prune_threshold: float = 0.0,
@@ -181,6 +184,12 @@ def benchmark_kr_map_components_nd(
         ``t**inexact_power`` at each outer step.
     plot_dykstra_iterates : bool
         Whether to plot and save per-component Dykstra iterate figures.
+    plot_outer_iterations : list[int] or None, optional
+        Optional list of outer PGD iteration indices for which Dykstra
+        residual histories should be tracked and plotted. Negative indices
+        follow Python conventions (e.g. ``-1`` is the final outer iteration).
+        Out-of-range values are ignored. If ``None``, all outer iterations are
+        tracked in plotting mode.
     batch_size : int or None, optional
         Mini-batch size for the stochastic gradient step.  When ``None``
         (default) the full gradient is used.
@@ -258,6 +267,9 @@ def benchmark_kr_map_components_nd(
                 prune_threshold=prune_threshold,
                 prune_interval=prune_interval,
                 dykstra_kwargs=dykstra_kwargs,
+                track_error_outer_iterations=(
+                    plot_outer_iterations if plot_dykstra_iterates else None
+                ),
             )
             w_vanilla, history_vanilla, time_vanilla = _run_component_optimisation(
                 pgd_solver=pgd_vanilla,
@@ -285,6 +297,9 @@ def benchmark_kr_map_components_nd(
                 prune_threshold=prune_threshold,
                 prune_interval=prune_interval,
                 dykstra_kwargs=dykstra_kwargs,
+                track_error_outer_iterations=(
+                    plot_outer_iterations if plot_dykstra_iterates else None
+                ),
                 delete_spaces=True,
             )
             w_fast, history_fast, time_fast = _run_component_optimisation(
@@ -317,9 +332,16 @@ def benchmark_kr_map_components_nd(
             f"SEED={seed}_M={num_particles}"
         )
         if plot_dykstra_iterates and run_vanilla and run_fast:
+            vanilla_outer_indices = history_vanilla["projection_outer_indices"]  # type: ignore[index]
+            fast_outer_indices = history_fast["projection_outer_indices"]  # type: ignore[index]
+            if list(vanilla_outer_indices) != list(fast_outer_indices):
+                raise ValueError(
+                    "Vanilla and fast solver tracked different outer iteration indices."
+                )
             plotter.plot_outer_iteration_solver_comparison(
                 vanilla_results=history_vanilla["projection_results"],  # type: ignore[index]
                 fast_forward_results=history_fast["projection_results"],  # type: ignore[index]
+                outer_indices=vanilla_outer_indices,
                 filename_prefix=prefix,
                 show=False,
             )
@@ -482,6 +504,7 @@ def run_benchmark() -> list[dict[str, Any]]:
         inexact_power=INEXACT_POWER,
         base_inner_iter=BASE_INNER_ITER,
         plot_dykstra_iterates=PLOT_DYKSTRA_ITERATES,
+        plot_outer_iterations=PLOT_DYKSTRA_OUTER_ITERATIONS,
         batch_size=BATCH_SIZE,
         rng_seed=RNG_SEED,
         prune_threshold=PRUNE_THRESHOLD,
@@ -531,45 +554,49 @@ def run_benchmark() -> list[dict[str, Any]]:
 
 if __name__ == "__main__":
 
-    RUN_SOLVER_MODE = "fast"  # options: "both", "vanilla", "fast"
-    ENFORCE_MATCHING = False
-    PLOT_DYKSTRA_ITERATES = False
-    PLOT_DISTRIBUTIONS = True
+    RUN_SOLVER_MODE: str = "both"  # options: "both", "vanilla", "fast"
+    ENFORCE_MATCHING: bool = False
+    PLOT_DYKSTRA_ITERATES: bool = True
+    PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = [0, -2, -1] \
+        if PLOT_DYKSTRA_ITERATES else None
+    PLOT_DISTRIBUTIONS: bool = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED = 69420
+    SEED: int = 69
 
-    NUM_DIMENSIONS = 2
-    NUM_PARTICLES = 300
+    NUM_DIMENSIONS: int = 2
+    NUM_PARTICLES: int = 300
 
-    MAX_OUTER_ITER = 10
-    DYKSTRA_KWARGS = {"track_error": False}
-    GRADIENT_CLIP_VALUE = 10.0
-    L1_REG = 0.0
+    MAX_OUTER_ITER: int = 10000
+    DYKSTRA_KWARGS: dict = {"track_error": False}
+    GRADIENT_CLIP_VALUE: float = 10.0
+    L1_REG: float = 0.05
 
     # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    BASE_INNER_ITER = 10
-    MAX_INNER_ITERS = 1000 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
-    INEXACT_POWER = np.log(MAX_INNER_ITERS - BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
+    BASE_INNER_ITER: int = 10
+    MAX_INNER_ITERS: int = 1000 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    INEXACT_POWER: float = np.log(MAX_INNER_ITERS - BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
     
     # SGD
     # BATCH_SIZE: int | None = None
     BATCH_SIZE: int | None = 100
-    RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None  # different seed
-    LEARNING_RATE = 0.00001
-    LR_DECAY = 1e-4 if BATCH_SIZE is not None else 0.0
+    RNG_SEED: int | None = SEED + 1 \
+        if BATCH_SIZE is not None else None # different seed
+    LEARNING_RATE: float = 0.00001
+    LR_DECAY: float = 1e-4 \
+        if BATCH_SIZE is not None else 0.0
 
     # IHT
-    PRUNE_THRESHOLD = 1e-3
-    PRUNE_INTERVAL = 50
+    PRUNE_THRESHOLD: float = 1e-4
+    PRUNE_INTERVAL: int = 100
 
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
         return zeta[:, 0] ** 2
 
     DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION)
-    DEGREE = 2
-    BASIS = HermiteBasis()
-    KR_MAP = KRMap(
+    DEGREE: int = 2
+    BASIS: Basis = HermiteBasis()
+    KR_MAP: KRMap = KRMap(
         degree=DEGREE,
         basis_1d=BASIS,
         log_epsilon=1e-8,
