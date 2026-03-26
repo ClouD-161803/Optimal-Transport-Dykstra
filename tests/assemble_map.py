@@ -111,21 +111,10 @@ if __name__ == "__main__":
 		2: np.array([-1.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0]),
 	}
 
-	# TRUNCATED_WEIGHTS = {
-	# 	1: np.array([3.56913064e-06, 7.14601383e-01, -2.66425150e-06]),
-	# 	2: np.array([
-	# 		2.11429379e-06,
-	# 		4.55947604e-01,
-	# 		-6.72377179e-03,
-	# 		-1.27633283e-06,
-	# 		4.39760107e-06,
-	# 		-3.42189765e-02,
-	# 	]),
-	# }
-	
+
 	# This is what an ideal run would return:
 	TRUNCATED_WEIGHTS = {
-		1: np.array([3.56913064e-06, 9.14601383e-01, -2.66425150e-06]),
+		1: np.array([3.56913064e-06, 9.94601383e-01, -2.66425150e-06]),
 		2: np.array([
 			-9.11429379e-01,
 			9.55947604e-01,
@@ -136,7 +125,13 @@ if __name__ == "__main__":
 		]),
 	}
 	
-
+	#TRUNCATED_WEIGHTS = {
+	#	1: np.array([3.56913064e-06, 9.14601383e-01, -2.66425150e-06]),
+	#	# These come from a 1 day run that failed
+	#	2: np.array([-0.02243113,  0.9587302,  -0.0748354,   0.         ,  0.         , -0.03317945]),}
+	
+	
+	
 	PLOT_OUTPUT_DIR = os.path.join(
 		os.path.dirname(__file__), "..", "results", "map_reconstruction"
 	)

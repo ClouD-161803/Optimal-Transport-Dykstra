@@ -215,3 +215,4 @@ __marimo__/
 
 # Unwanted results folders
 full_experiment_benchmarks/
+bin/
