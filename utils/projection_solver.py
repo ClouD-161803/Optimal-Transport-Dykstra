@@ -98,7 +98,8 @@ class ConvexProjectionSolver(ABC):
                  max_iter: int, track_error: bool = False,
                  min_error: float = 1e-3,
                  track_active_halfspaces: bool = False,
-                 delete_spaces: bool = False):
+                 delete_spaces: bool = False,
+                 track_iterates: bool = False):
         """
         Args:
             z: Initial point to project.
@@ -109,6 +110,7 @@ class ConvexProjectionSolver(ABC):
             min_error: Squared-error threshold below which the solver is considered converged.
             track_active_halfspaces: Whether to record per-halfspace activity each cycle.
             delete_spaces: Whether to remove initially-inactive half-spaces before solving.
+            track_iterates: Whether to record x after each full Dykstra cycle.
         """
         self.z = z.copy()
         if delete_spaces:
@@ -121,6 +123,7 @@ class ConvexProjectionSolver(ABC):
         self.track_error = track_error
         self.min_error = min_error
         self.track_active_halfspaces = track_active_halfspaces
+        self.track_iterates = track_iterates
 
         self.n = self.A.shape[0]
         self.dim = len(self.z)
@@ -137,6 +140,10 @@ class ConvexProjectionSolver(ABC):
 
         if self.track_active_halfspaces:
             self.active_half_spaces = np.zeros((self.n, max_iter + 1))
+
+        if self.track_iterates:
+            self.iterates = np.zeros((max_iter + 1, self.dim))
+            self.iterates[0] = self.x.copy()
 
     @abstractmethod
     def _update_error(self, m: int, x_temp: np.ndarray, x: np.ndarray) -> None:
@@ -176,6 +183,7 @@ class ConvexProjectionSolver(ABC):
             converged_errors=self.converged_errors if self.track_error else None,
             active_half_spaces=(self.active_half_spaces
                                 if self.track_active_halfspaces else None),
+            iterates=self.iterates if self.track_iterates else None,
         )
 
     @abstractmethod
@@ -202,6 +210,8 @@ class DykstraProjectionSolver(ConvexProjectionSolver):
                 )
                 self._update_error(m, x_temp, self.x)
 
+            if self.track_iterates:
+                self.iterates[i + 1] = self.x.copy()
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
 
@@ -241,6 +251,8 @@ class DykstraMapHybridSolver(ConvexProjectionSolver):
                 )
                 self._update_error(m, x_temp, self.x)
 
+            if self.track_iterates:
+                self.iterates[i + 1] = self.x.copy()
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
 
@@ -322,6 +334,8 @@ class DykstraStallDetectionSolver(ConvexProjectionSolver):
                     self.stalling = True
                     self.m_stalling = m
 
+            if self.track_iterates:
+                self.iterates[i + 1] = self.x.copy()
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
             self.prev_cycle_x[:] = self.curr_cycle_x

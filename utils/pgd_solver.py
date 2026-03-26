@@ -66,6 +66,10 @@ class ProjectedGradientDescent:
         requested outer PGD iterations. Negative indices follow Python
         conventions (e.g. ``-1`` is the final outer iteration), and
         out-of-range values are ignored.
+    store_all_projection_results : bool, optional
+        If ``True``, retain projection solver outputs for every outer
+        iteration in ``history["projection_results_full"]`` regardless of
+        ``track_error_outer_iterations``. Default ``False``.
     **dykstra_kwargs
         Additional keyword arguments forwarded verbatim to
         ``projection_solver_class`` on every inner instantiation (e.g.
@@ -88,6 +92,7 @@ class ProjectedGradientDescent:
         prune_threshold: float = 0.0,
         prune_interval: int = 50,
         track_error_outer_iterations: list[int] | None = None,
+        store_all_projection_results: bool = False,
         **dykstra_kwargs: Any,
     ) -> None:
         self.learning_rate = learning_rate
@@ -107,6 +112,7 @@ class ProjectedGradientDescent:
             if track_error_outer_iterations is not None
             else None
         )
+        self.store_all_projection_results = bool(store_all_projection_results)
         # max_iter is set dynamically by the schedule; remove if accidentally passed.
         dykstra_kwargs.pop("max_iter", None)
         self.dykstra_kwargs = dykstra_kwargs
@@ -194,6 +200,14 @@ class ProjectedGradientDescent:
                 only the requested outer iterations are retained.
             * ``"projection_outer_indices"`` – list of outer-iteration
               indices corresponding to entries in ``projection_results``.
+            * ``"projection_results_full"`` – list of projection result
+              objects for all outer iterations. Empty unless
+              ``store_all_projection_results=True``.
+            * ``"projection_outer_indices_full"`` – outer-iteration indices
+              corresponding to ``projection_results_full``.
+            * ``"weight_iterates"`` – list of ``np.ndarray`` snapshots of
+              the coefficient vector across outer iterations, including the
+              initial value at index ``0``.
         """
         w = w_init.copy()
         M_particles: int = A_constraint.shape[0]
@@ -214,6 +228,9 @@ class ProjectedGradientDescent:
         dykstra_inner_iters: list[int] = []
         projection_results: list[Any] = []
         projection_outer_indices: list[int] = []
+        projection_results_full: list[Any] = []
+        projection_outer_indices_full: list[int] = []
+        weight_iterates: list[np.ndarray] = [w.copy()]
 
         selective_tracking = self.track_error_outer_iterations is not None
         tracked_outer_set: set[int] | None = None
@@ -258,7 +275,8 @@ class ProjectedGradientDescent:
             should_track_this_outer = True
             if tracked_outer_set is not None:
                 should_track_this_outer = outer_idx in tracked_outer_set
-                solver_kwargs["track_error"] = should_track_this_outer
+                if not self.store_all_projection_results:
+                    solver_kwargs["track_error"] = should_track_this_outer
 
             solver = self.projection_solver_class(
                 z=w_tilde,
@@ -268,6 +286,9 @@ class ProjectedGradientDescent:
                 **solver_kwargs,
             )
             result = solver.solve()
+            if self.store_all_projection_results:
+                projection_results_full.append(result)
+                projection_outer_indices_full.append(outer_idx)
             if tracked_outer_set is None or should_track_this_outer:
                 projection_results.append(result)
                 projection_outer_indices.append(outer_idx)
@@ -276,6 +297,7 @@ class ProjectedGradientDescent:
             w[~active_mask] = 0.0
 
             objective_values.append(_objective(w))
+            weight_iterates.append(w.copy())
 
             if (
                 hasattr(result, "squared_errors")
@@ -290,6 +312,9 @@ class ProjectedGradientDescent:
             "dykstra_inner_iters": dykstra_inner_iters,
             "projection_results": projection_results,
             "projection_outer_indices": projection_outer_indices,
+            "projection_results_full": projection_results_full,
+            "projection_outer_indices_full": projection_outer_indices_full,
+            "weight_iterates": weight_iterates,
         }
 
         return w, history
