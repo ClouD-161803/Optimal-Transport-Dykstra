@@ -118,6 +118,14 @@ class TensorHermiteBasis(Basis):
 
     Heⱼ₁(zᵢ,₁) · … · Heⱼₖ(zᵢ,ₖ).
 
+    This implementation applies total-degree truncation, i.e. only
+    multi-indices with
+
+    j₁ + ··· + jₖ ≤ max_degree
+
+    are retained.  This naturally enforces sparsity and avoids combinatorial
+    explosion from the full tensor product.
+
     The derivative matrix is the partial derivative with respect to the last
     coordinate only:
 
@@ -143,30 +151,34 @@ class TensorHermiteBasis(Basis):
             raise ValueError("Input z must have shape (M, k).")
         return z
 
-    @staticmethod
-    def _multi_indices(k: int, max_degree: int) -> np.ndarray:
-        """Build all tensor-product degree combinations.
+    def _get_degree_combinations(
+        self,
+        num_dims: int,
+        max_degree: int,
+    ) -> np.ndarray:
+        """Build total-degree-truncated degree combinations.
 
         Parameters
         ----------
-        k : int
+        num_dims : int
             Number of dimensions.
         max_degree : int
-            Maximum degree in each dimension.
+            Maximum total polynomial degree.
 
         Returns
         -------
         np.ndarray
-            Integer matrix of shape ``(n_terms, k)`` containing all
-            combinations of degrees from 0 to ``max_degree``.
+            Degree combinations ``combo`` satisfying
+            ``sum(combo) <= max_degree``, with shape ``(n_terms, num_dims)``.
         """
+        combinations = product(range(max_degree + 1), repeat=num_dims)
         return np.asarray(
-            list(product(range(max_degree + 1), repeat=k)),
+            [combo for combo in combinations if sum(combo) <= max_degree],
             dtype=int,
         )
 
     def evaluate(self, z: np.ndarray, max_degree: int) -> np.ndarray:
-        """Evaluate the tensor Hermite basis.
+        """Evaluate the total-degree-truncated tensor Hermite basis.
 
         Parameters
         ----------
@@ -178,12 +190,13 @@ class TensorHermiteBasis(Basis):
         Returns
         -------
         np.ndarray
-            Basis matrix with shape ``(M, (max_degree + 1)^k)``.
+            Basis matrix with shape ``(M, n_terms)`` where ``n_terms`` is the
+            number of retained total-degree combinations.
         """
         z = self._validate_input(z)
         M, k = z.shape
 
-        multi_idx = self._multi_indices(k, max_degree)  # (n_terms, k)
+        multi_idx = self._get_degree_combinations(k, max_degree)  # (n_terms, k)
         hermite_vals = np.stack(
             [hermite_polynomial(z[:, dim], max_degree) for dim in range(k)],
             axis=1,
@@ -194,7 +207,7 @@ class TensorHermiteBasis(Basis):
         return np.prod(selected, axis=1)  # (M, n_terms)
 
     def evaluate_derivative(self, z: np.ndarray, max_degree: int) -> np.ndarray:
-        """Evaluate the tensor basis derivative in the last variable only.
+        """Evaluate the truncated tensor basis derivative in the last variable only.
 
         Parameters
         ----------
@@ -206,12 +219,13 @@ class TensorHermiteBasis(Basis):
         Returns
         -------
         np.ndarray
-            Derivative basis matrix with shape ``(M, (max_degree + 1)^k)``.
+            Derivative basis matrix with shape ``(M, n_terms)`` where
+            ``n_terms`` is the number of retained total-degree combinations.
         """
         z = self._validate_input(z)
         M, k = z.shape
 
-        multi_idx = self._multi_indices(k, max_degree)  # (n_terms, k)
+        multi_idx = self._get_degree_combinations(k, max_degree)  # (n_terms, k)
 
         last_vals = hermite_polynomial(z[:, -1], max_degree)  # (M, max_degree + 1)
         d_last_vals = np.zeros_like(last_vals)
@@ -332,6 +346,36 @@ class KRMapComponent:
         safe_dPsi_w = np.maximum(dPsi_w + self.log_epsilon, self.log_epsilon)
         return (self.Psi.T @ Psi_w - self.dPsi.T @ (1.0 / safe_dPsi_w)) / self.M
 
+    def gradient_batch(self, w: np.ndarray, idx: np.ndarray) -> np.ndarray:
+        """Compute the stochastic gradient over a mini-batch of particle indices.
+
+        Uses the same formula as ``gradient`` but restricted to rows *idx*:
+
+            ∇f̂(w) = (1/B) [ Ψ_Bᵀ(Ψ_B w) − (∇Ψ_B)ᵀ(1 / max(∇Ψ_B·w + ε, ε)) ]
+
+        where B = ``len(idx)`` and Ψ_B = ``self.Psi[idx]``.
+
+        Parameters
+        ----------
+        w : np.ndarray
+            Coefficient vector, shape ``(n_terms,)``.
+        idx : np.ndarray
+            Integer array of particle indices to include in the batch,
+            shape ``(B,)``.  Must be valid row indices into ``self.Psi``.
+
+        Returns
+        -------
+        np.ndarray
+            Stochastic gradient vector, shape ``(n_terms,)``.
+        """
+        Psi_b = self.Psi[idx]
+        dPsi_b = self.dPsi[idx]
+        Psi_w = Psi_b @ w
+        dPsi_w = dPsi_b @ w
+        safe_dPsi_w = np.maximum(dPsi_w + self.log_epsilon, self.log_epsilon)
+        batch_size = float(len(idx))
+        return (Psi_b.T @ Psi_w - dPsi_b.T @ (1.0 / safe_dPsi_w)) / batch_size
+
     def get_polyhedral_constraints(
         self, epsilon: float = 1e-4
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -384,6 +428,32 @@ class KRMap:
             raise ValueError("component_dim must be >= 1.")
         return self.basis_1d if component_dim == 1 else self.tensor_basis
 
+    def _get_component_degree_combinations(self, component_dim: int) -> np.ndarray:
+        """Return degree combinations used by the active component basis."""
+        if component_dim < 1:
+            raise ValueError("component_dim must be >= 1.")
+
+        if component_dim == 1:
+            return np.arange(self.degree + 1, dtype=int)[:, None]
+
+        if isinstance(self.tensor_basis, TensorHermiteBasis):
+            return self.tensor_basis._get_degree_combinations(
+                num_dims=component_dim,
+                max_degree=self.degree,
+            )
+
+        return np.asarray(
+            list(product(range(self.degree + 1), repeat=component_dim)),
+            dtype=int,
+        )
+
+    def _full_tensor_indices_for_truncated(self, component_dim: int) -> np.ndarray:
+        """Map truncated multi-indices to indices in full tensor-product ordering."""
+        combos = self._get_component_degree_combinations(component_dim)
+        base = self.degree + 1
+        powers = base ** np.arange(component_dim - 1, -1, -1, dtype=int)
+        return (combos * powers).sum(axis=1).astype(int)
+
     def make_component(self, data: np.ndarray) -> KRMapComponent:
         """Build a KRMapComponent with the correct basis for its dimension."""
         arr = np.asarray(data)
@@ -408,10 +478,8 @@ class KRMap:
         if self.degree < 1:
             raise ValueError("degree must be >= 1 to represent the identity term.")
 
-        multi_idx = np.asarray(
-            list(product(range(self.degree + 1), repeat=component_dim)),
-            dtype=int,
-        )
+        multi_idx = self._get_component_degree_combinations(component_dim)
+
         target = np.zeros(component_dim, dtype=int)
         target[-1] = 1
 
@@ -423,7 +491,8 @@ class KRMap:
 
     def build_identity_initial_guess(self, component_dim: int) -> np.ndarray:
         """Build identity-map initial guess for one KR component."""
-        num_coefficients = (self.degree + 1) ** component_dim
+        num_coefficients = self._get_component_degree_combinations(component_dim).shape[0]
+
         w_init = np.zeros(num_coefficients, dtype=float)
         identity_idx = self.get_tensor_identity_term_index(component_dim)
         w_init[identity_idx] = 1.0
@@ -489,6 +558,20 @@ class KRMap:
                 weights_by_component[component_dim],
                 dtype=float,
             ).reshape(-1)
+
+            expected_num_coefficients = psi.shape[1]
+            full_tensor_num_coefficients = (self.degree + 1) ** component_dim
+            if (
+                component_dim > 1
+                and isinstance(self.tensor_basis, TensorHermiteBasis)
+                and weights.size == full_tensor_num_coefficients
+                and expected_num_coefficients < full_tensor_num_coefficients
+            ):
+                # Allow legacy full-tensor weights by selecting only the active
+                # total-degree-truncated components in consistent ordering.
+                keep_idx = self._full_tensor_indices_for_truncated(component_dim)
+                weights = weights[keep_idx]
+
             if psi.shape[1] != weights.size:
                 raise ValueError(
                     f"Weight size mismatch for component {component_dim}: "

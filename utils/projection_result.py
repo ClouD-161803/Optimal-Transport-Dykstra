@@ -12,3 +12,4 @@ class ProjectionResult:
     stalled_errors: Optional[np.ndarray] = None
     converged_errors: Optional[np.ndarray] = None
     active_half_spaces: Optional[np.ndarray] = None
+    iterates: Optional[np.ndarray] = None

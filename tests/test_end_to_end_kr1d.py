@@ -27,7 +27,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     standard ``DykstraProjectionSolver`` and once with the
     ``DykstraStallDetectionSolver`` (with inactive half-space removal
     enabled). It then asserts that both solvers converge to the same
-    coefficient vector, and saves one figure with all per-outer-iteration
+    coefficient vector, and saves one figure with selected per-outer-iteration
     squared-error comparisons.
     """
     # Step 1 – Data
@@ -45,17 +45,19 @@ def test_dykstra_fast_forward_advantage() -> None:
     A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
 
     # Step 4 – Initial guess (identity map: S(z) = z)
-    w_init: np.ndarray = np.array([0., 1., 0., 0.])
+    w_init: np.ndarray = np.array([-10., 10., 10., -10.5])
 
     learning_rate: float = 0.01
-    max_outer_iter: int = 3
-    dykstra_kwargs: dict = {"max_iter": 1000, "track_error": True}
+    max_outer_iter: int = 20
+    dykstra_kwargs: dict = {"track_error": False}
+    plot_outer_iterations: list[int] | None = [0, 1, 2, 4]
 
     # Step 5a – Vanilla Dykstra
     pgd_vanilla = ProjectedGradientDescent(
         learning_rate=learning_rate,
         max_outer_iter=max_outer_iter,
         projection_solver_class=DykstraProjectionSolver,
+        track_error_outer_iterations=plot_outer_iterations,
         **dykstra_kwargs,
     )
 
@@ -74,6 +76,7 @@ def test_dykstra_fast_forward_advantage() -> None:
         learning_rate=learning_rate,
         max_outer_iter=max_outer_iter,
         projection_solver_class=DykstraStallDetectionSolver,
+        track_error_outer_iterations=plot_outer_iterations,
         delete_spaces=True,
         **dykstra_kwargs,
     )
@@ -98,6 +101,19 @@ def test_dykstra_fast_forward_advantage() -> None:
 
     obj_vanilla: float = history_vanilla["objective_value"][-1]
     obj_fast: float = history_fast["objective_value"][-1]
+    expected_outer_indices: list[int] = []
+    if plot_outer_iterations is None:
+        expected_outer_indices = list(range(max_outer_iter))
+    else:
+        for raw_idx in plot_outer_iterations:
+            idx = raw_idx + max_outer_iter if raw_idx < 0 else raw_idx
+            if 0 <= idx < max_outer_iter and idx not in expected_outer_indices:
+                expected_outer_indices.append(idx)
+
+    assert history_vanilla["projection_outer_indices"] == expected_outer_indices
+    assert history_fast["projection_outer_indices"] == expected_outer_indices
+    assert len(history_vanilla["projection_results"]) == len(expected_outer_indices)
+    assert len(history_fast["projection_results"]) == len(expected_outer_indices)
 
     plot_output_dir = os.path.join(
         os.path.dirname(__file__), "..", "results", "dykstra_benchmarks"
@@ -106,6 +122,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     plotter.plot_outer_iteration_solver_comparison(
         vanilla_results=history_vanilla["projection_results"],
         fast_forward_results=history_fast["projection_results"],
+        outer_indices=history_vanilla["projection_outer_indices"],
         filename_prefix=(
             f"kr1d_outer_iter_comparison_SEED={seed}_M={num_particles}"
         ),
@@ -118,7 +135,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     print(f"  Particles  : {num_particles}")
     print(f"  Degree     : {degree}")
     print(f"  Outer iters: {max_outer_iter}")
-    print(f"  Inner iters: {dykstra_kwargs['max_iter']}  (per outer step)")
+    print(f"  Inner iters: inexact schedule (base_tol=1e-3, power=1.1)")
     print("")
     print(f"  {'Solver':<28} {'Time (s)':>10} {'Final obj':>12}")
     print("")

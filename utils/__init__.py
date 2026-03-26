@@ -8,6 +8,7 @@ from .projection_solver import (
 from .data_generator import DataGenerator, generate_crescent_data_2d, generate_crescent_data_nd
 from .hermite import hermite_polynomial
 from .optimal_transport import (
+    Basis,
     HermiteBasis,
     TensorHermiteBasis,
     KRMap,
