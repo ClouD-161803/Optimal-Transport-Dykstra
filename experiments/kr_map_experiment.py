@@ -924,7 +924,7 @@ if __name__ == "__main__":
         mode="constant",
     )[:NUM_DIMENSIONS]
 
-    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
+    SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
     # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
     # SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # directional nD Gaussian-von-Mises shear
     #     amplitude=VM_AMPLITUDE,
@@ -933,13 +933,13 @@ if __name__ == "__main__":
     #     radius_std=VM_RADIUS_STD,
     #     mean_direction=VM_MEAN_DIRECTION,
     # )
-    SHEAR_FUNCTION_MODEL = AxialGaussianVonMisesShearFunction(  # axial nD Gaussian-von-Mises shear
-        amplitude=VM_AMPLITUDE,
-        kappa=VM_KAPPA,
-        radius_mean=VM_RADIUS_MEAN,
-        radius_std=VM_RADIUS_STD,
-        mean_direction=VM_MEAN_DIRECTION,
-    )
+    # SHEAR_FUNCTION_MODEL = AxialGaussianVonMisesShearFunction(  # axial nD Gaussian-von-Mises shear
+    #     amplitude=VM_AMPLITUDE,
+    #     kappa=VM_KAPPA,
+    #     radius_mean=VM_RADIUS_MEAN,
+    #     radius_std=VM_RADIUS_STD,
+    #     mean_direction=VM_MEAN_DIRECTION,
+    # )
 
     DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
     DEGREE: int = 2
