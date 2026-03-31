@@ -348,29 +348,42 @@ class DistributionPlotter(_BasePlotter):
 
     def plot_distributions(
         self,
-        zeta: np.ndarray,
-        z: np.ndarray,
+        reference_samples: np.ndarray,
+        sheared_samples: np.ndarray,
         seed: int,
         m: int,
+        shear_label: str | None = None,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
-        """Plot and save standard-normal and crescent sample distributions."""
+        """Plot and save standard-normal and sheared sample distributions."""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
+        sheared_title = "Sheared distribution"
+        filename_label = ""
+        if shear_label is not None and shear_label.strip() != "":
+            cleaned_label = shear_label.strip()
+            sheared_title = f"Sheared distribution ({cleaned_label})"
+            filename_label = f"_SHEAR={cleaned_label}"
+            fig.suptitle(
+                f"Synthetic distribution comparison ({cleaned_label})",
+                fontsize=TITLE_FONT_SIZE,
+            )
+
         self._draw_distribution_panel(
-            ax=ax1, samples=zeta,
+            ax=ax1, samples=reference_samples,
             title=r"Standard normal $\mathcal{N}(0, I_2)$",
             xlabel="$z_1$", ylabel="$z_2$", color="blue",
         )
         self._draw_distribution_panel(
-            ax=ax2, samples=z,
-            title="Crescent distribution",
+            ax=ax2, samples=sheared_samples,
+            title=sheared_title,
             xlabel="$x_1$", ylabel="$x_2$", color="red",
         )
 
+        default_filename = f"synthetic_distribution_SEED={seed}_M={m}{filename_label}.png"
         return self._save_and_show(
-            fig, filename or f"synthetic_distribution_SEED={seed}_M={m}.png", show
+            fig, filename or default_filename, show
         )
 
     def _draw_distribution_panel(
