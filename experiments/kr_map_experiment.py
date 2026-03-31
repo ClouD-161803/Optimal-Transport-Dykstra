@@ -886,12 +886,12 @@ if __name__ == "__main__":
         if PLOT_DISTRIBUTIONS else None
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 1111
+    SEED: int = 1234
 
     NUM_DIMENSIONS: int = 2
-    NUM_PARTICLES: int = 200
+    NUM_PARTICLES: int = 2500
 
-    MAX_OUTER_ITER: int = 1
+    MAX_OUTER_ITER: int = 15000
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
@@ -903,10 +903,10 @@ if __name__ == "__main__":
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = None
+    BATCH_SIZE: int | None = 700
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
-    LEARNING_RATE: float = 0.01
+    LEARNING_RATE: float = 0.1
     LR_DECAY: float = 1e-2 \
         if BATCH_SIZE is not None else 0.0 # LR = LR_0 / (1 + LR_DECAY * t)
 
