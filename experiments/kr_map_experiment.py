@@ -891,7 +891,7 @@ if __name__ == "__main__":
     NUM_DIMENSIONS: int = 2
     NUM_PARTICLES: int = 200
 
-    MAX_OUTER_ITER: int = 10000
+    MAX_OUTER_ITER: int = 1
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
@@ -914,25 +914,27 @@ if __name__ == "__main__":
     PRUNE_THRESHOLD: float = 1e-2
     PRUNE_INTERVAL: int = 100
 
-    # Data generation
+    # Data generation (uncomment one)
+
     GVM_ALPHA: float = -3.2
     GVM_BETA: np.ndarray = np.array([0.0, 0.0], dtype=float)
     GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
     GVM_KAPPA: float = 12.0
     LINE_SIGMA: float = 0.15
 
-    # DATA_GENERATOR = GVMDataGenerator(
-    #     alpha=GVM_ALPHA,
-    #     beta=GVM_BETA,
-    #     gamma=GVM_GAMMA,
-    #     kappa=GVM_KAPPA,
-    # )
+    DATA_GENERATOR = GVMDataGenerator(
+        alpha=GVM_ALPHA,
+        beta=GVM_BETA,
+        gamma=GVM_GAMMA,
+        kappa=GVM_KAPPA,
+    )
     # DATA_GENERATOR = DataGenerator(
     #     shear_function=BoomerangShearFunction(),  # classic boomerang: x_1^2 added to x_2
     # )
-    DATA_GENERATOR = DataGenerator(
-        shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),  # line-like shear near y = x
-    )
+    # DATA_GENERATOR = DataGenerator(
+    #     shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),  # line-like shear near y = x
+    # )
+    
     DEGREE: int = 2
     BASIS: Basis = HermiteBasis()
     KR_MAP: KRMap = KRMap(
