@@ -142,42 +142,122 @@ def _to_json_safe(value: Any) -> Any:
     return value
 
 
-def _serialise_projection_result(result: Any) -> dict[str, Any]:
-    """Serialise one projection result object for JSON export."""
-    return {
-        "projection": _to_json_safe(getattr(result, "projection", None)),
-        "squared_errors": _to_json_safe(getattr(result, "squared_errors", None)),
-        "stalled_errors": _to_json_safe(getattr(result, "stalled_errors", None)),
-        "converged_errors": _to_json_safe(getattr(result, "converged_errors", None)),
-        "active_half_spaces": _to_json_safe(
-            getattr(result, "active_half_spaces", None)
-        ),
-    }
+def _save_full_run_iterates_npz(
+    results: list[dict[str, Any]],
+    output_dir: str,
+    num_dimensions: int,
+    num_particles: int,
+    seed: int,
+    max_outer_iter: int,
+    base_inner_iter: int,
+    max_inner_iters: int,
+    solver_mode: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Write full solver trajectories to compressed NPZ and return index metadata."""
 
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = (
+        f"kr{num_dimensions}d_full_run_iterates_"
+        f"SEED={seed}_M={num_particles}_PGDITERS={max_outer_iter}_"
+        f"DYKSTRA_ITERS={base_inner_iter}_{max_inner_iters}_MODE={solver_mode}_TS={timestamp}.npz"
+    )
+    output_path = os.path.join(output_dir, filename)
 
-def _serialise_history(history: dict[str, Any]) -> dict[str, Any]:
-    """Serialise one PGD history dictionary for JSON export."""
-    serialised: dict[str, Any] = {}
-    for key, value in history.items():
-        if key in {"projection_results", "projection_results_full"}:
-            serialised[key] = [
-                _serialise_projection_result(result)
-                for result in value
-            ]
-        else:
-            serialised[key] = _to_json_safe(value)
-    return serialised
+    arrays_to_save: dict[str, np.ndarray] = {}
+    component_index: list[dict[str, Any]] = []
 
+    for component_result in results:
+        component_dim = int(component_result["component_dim"])
+        component_meta: dict[str, Any] = {
+            "component_dim": component_dim,
+            "solvers": {},
+        }
 
-def _serialise_component_result(component_result: dict[str, Any]) -> dict[str, Any]:
-    """Serialise one component benchmark result dictionary."""
-    serialised: dict[str, Any] = {}
-    for key, value in component_result.items():
-        if key.startswith("history_") and isinstance(value, dict):
-            serialised[key] = _serialise_history(value)
-        else:
-            serialised[key] = _to_json_safe(value)
-    return serialised
+        for solver_label in ("vanilla", "fast"):
+            history_key = f"history_{solver_label}"
+            weights_key = f"w_{solver_label}"
+            if history_key not in component_result or weights_key not in component_result:
+                continue
+
+            history = component_result[history_key]
+            prefix = f"comp{component_dim}_{solver_label}"
+
+            weights_arr = np.asarray(component_result[weights_key], dtype=float)
+            objective_arr = np.asarray(history.get("objective_value", []), dtype=float)
+            dykstra_iters_arr = np.asarray(
+                history.get("dykstra_inner_iters", []),
+                dtype=int,
+            )
+
+            arrays_to_save[f"{prefix}_weights"] = weights_arr
+            arrays_to_save[f"{prefix}_objective_value"] = objective_arr
+            arrays_to_save[f"{prefix}_dykstra_inner_iters"] = dykstra_iters_arr
+
+            solver_meta: dict[str, Any] = {
+                "weights_key": f"{prefix}_weights",
+                "objective_value_key": f"{prefix}_objective_value",
+                "dykstra_inner_iters_key": f"{prefix}_dykstra_inner_iters",
+            }
+
+            for proj_key in ("projection_results", "projection_results_full"):
+                if proj_key not in history:
+                    continue
+
+                proj_values = history[proj_key]
+                projections = np.asarray(
+                    [getattr(result, "projection", None) for result in proj_values],
+                    dtype=object,
+                )
+                squared_errors = np.asarray(
+                    [getattr(result, "squared_errors", None) for result in proj_values],
+                    dtype=object,
+                )
+                stalled_errors = np.asarray(
+                    [getattr(result, "stalled_errors", None) for result in proj_values],
+                    dtype=object,
+                )
+                converged_errors = np.asarray(
+                    [getattr(result, "converged_errors", None) for result in proj_values],
+                    dtype=object,
+                )
+                active_half_spaces = np.asarray(
+                    [getattr(result, "active_half_spaces", None) for result in proj_values],
+                    dtype=object,
+                )
+
+                arrays_to_save[f"{prefix}_{proj_key}_projection"] = projections
+                arrays_to_save[f"{prefix}_{proj_key}_squared_errors"] = squared_errors
+                arrays_to_save[f"{prefix}_{proj_key}_stalled_errors"] = stalled_errors
+                arrays_to_save[f"{prefix}_{proj_key}_converged_errors"] = converged_errors
+                arrays_to_save[f"{prefix}_{proj_key}_active_half_spaces"] = active_half_spaces
+
+                solver_meta[f"{proj_key}_keys"] = {
+                    "projection": f"{prefix}_{proj_key}_projection",
+                    "squared_errors": f"{prefix}_{proj_key}_squared_errors",
+                    "stalled_errors": f"{prefix}_{proj_key}_stalled_errors",
+                    "converged_errors": f"{prefix}_{proj_key}_converged_errors",
+                    "active_half_spaces": f"{prefix}_{proj_key}_active_half_spaces",
+                }
+
+            outer_idx_key = "projection_outer_indices"
+            if outer_idx_key in history:
+                outer_idx_arr = np.asarray(history[outer_idx_key], dtype=int)
+                arrays_to_save[f"{prefix}_{outer_idx_key}"] = outer_idx_arr
+                solver_meta[f"{outer_idx_key}_key"] = f"{prefix}_{outer_idx_key}"
+
+            outer_idx_full_key = "projection_outer_indices_full"
+            if outer_idx_full_key in history:
+                outer_idx_full_arr = np.asarray(history[outer_idx_full_key], dtype=int)
+                arrays_to_save[f"{prefix}_{outer_idx_full_key}"] = outer_idx_full_arr
+                solver_meta[f"{outer_idx_full_key}_key"] = f"{prefix}_{outer_idx_full_key}"
+
+            component_meta["solvers"][solver_label] = solver_meta
+
+        component_index.append(component_meta)
+
+    np.savez_compressed(output_path, **arrays_to_save)  # type: ignore[arg-type]
+    return output_path, component_index
 
 
 def _save_full_run_iterates_json(
@@ -197,8 +277,10 @@ def _save_full_run_iterates_json(
     prune_interval: int,
     prune_threshold: float,
     dykstra_kwargs: dict[str, Any],
-) -> str | None:
-    """Write a full solver-trajectory JSON payload."""
+    npz_path: str,
+    npz_component_index: list[dict[str, Any]],
+) -> str:
+    """Write lightweight JSON metadata and pointers to NPZ trajectory arrays."""
 
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -226,24 +308,43 @@ def _save_full_run_iterates_json(
             "prune_interval": prune_interval,
             "prune_threshold": prune_threshold,
             "dykstra_kwargs": _to_json_safe(dykstra_kwargs),
+            "npz_pointer": {
+                "absolute_path": npz_path,
+                "relative_to_json_dir": os.path.relpath(npz_path, output_dir),
+                "format": "npz",
+                "compression": "zip",
+                "allow_pickle_required": True,
+            },
             "notes": {
-                "weight_iterates": (
-                    "Index 0 is the initial coefficient vector; index t is "
-                    "the coefficients after outer iteration t."
+                "json_payload": (
+                    "Contains run metadata and compact per-component summaries only. "
+                    "Large trajectory arrays are stored in the NPZ artifact."
                 ),
-                "projection_results_full": (
-                    "Contains one Dykstra run per outer PGD iteration."
-                ),
-                "projection_result.squared_errors": (
-                    "Per-inner-cycle Dykstra squared-error trajectory for "
-                    "each outer PGD iteration."
+                "npz_component_index": (
+                    "Maps each component/solver to NPZ array keys for weights, "
+                    "objectives, Dykstra iterates, and projection trajectories."
                 ),
             },
         },
         "components": [
-            _serialise_component_result(component_result)
+            {
+                "component_dim": int(component_result["component_dim"]),
+                "coefficients_close": _to_json_safe(
+                    component_result.get("coefficients_close")
+                ),
+                "coefficients_max_abs_diff": _to_json_safe(
+                    component_result.get("coefficients_max_abs_diff")
+                ),
+                "time_vanilla": _to_json_safe(component_result.get("time_vanilla")),
+                "time_fast": _to_json_safe(component_result.get("time_fast")),
+                "objective_vanilla": _to_json_safe(
+                    component_result.get("objective_vanilla")
+                ),
+                "objective_fast": _to_json_safe(component_result.get("objective_fast")),
+            }
             for component_result in results
         ],
+        "npz_component_index": _to_json_safe(npz_component_index),
     }
 
     with open(output_path, "w", encoding="utf-8") as handle:
@@ -663,7 +764,25 @@ def run_benchmark() -> list[dict[str, Any]]:
     )
 
     full_run_json_path = None
+    full_run_npz_path = None
     if SAVE_FULL_RUN_ITERATES_JSON:
+        full_run_npz_path, npz_component_index = _save_full_run_iterates_npz(
+            results=results,
+            output_dir=os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "results",
+                "full_experiment_benchmarks",
+                "full_run_iterates",
+            ),
+            num_dimensions=NUM_DIMENSIONS,
+            num_particles=NUM_PARTICLES,
+            seed=SEED,
+            max_outer_iter=MAX_OUTER_ITER,
+            base_inner_iter=BASE_INNER_ITER,
+            max_inner_iters=MAX_INNER_ITERS,
+            solver_mode=solver_mode,
+        )
         full_run_json_path = _save_full_run_iterates_json(
             results=results,
             solver_mode=solver_mode,
@@ -687,6 +806,8 @@ def run_benchmark() -> list[dict[str, Any]]:
             prune_interval=PRUNE_INTERVAL,
             prune_threshold=PRUNE_THRESHOLD,
             dykstra_kwargs=dykstra_kwargs,
+            npz_path=full_run_npz_path,
+            npz_component_index=npz_component_index,
         )
 
     if PLOT_DISTRIBUTIONS:
@@ -717,6 +838,8 @@ def run_benchmark() -> list[dict[str, Any]]:
         f"{num_distribution_figures} distribution comparison figure(s) "
         "in results/full_experiment_benchmarks."
     )
+    if full_run_npz_path is not None:
+        print(f"Saved full iterate NPZ: {full_run_npz_path}")
     if full_run_json_path is not None:
         print(f"Saved full iterate JSON: {full_run_json_path}")
 
@@ -742,19 +865,19 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS: bool = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 30032026
+    SEED: int = 8888
 
-    NUM_DIMENSIONS: int = 2
-    NUM_PARTICLES: int = 500
+    NUM_DIMENSIONS: int = 6
+    NUM_PARTICLES: int = 1000
 
-    MAX_OUTER_ITER: int = 10000
+    MAX_OUTER_ITER: int = 10
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
 
     # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    BASE_INNER_ITER: int = 1
-    MAX_INNER_ITERS: int = 1 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    BASE_INNER_ITER: int = 10
+    MAX_INNER_ITERS: int = 100 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
     INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
     
     # SGD
@@ -762,7 +885,7 @@ if __name__ == "__main__":
     BATCH_SIZE: int | None = 100
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
-    LEARNING_RATE: float = 0.25
+    LEARNING_RATE: float = 1
     LR_DECAY: float = 1e-2 \
         if BATCH_SIZE is not None else 0.0 # LR = LR_0 / (1 + LR_DECAY * t)
 
@@ -770,6 +893,7 @@ if __name__ == "__main__":
     PRUNE_THRESHOLD: float = 1e-2
     PRUNE_INTERVAL: int = 100
 
+    # Data
     SIGMA: float = 0.15
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
         # return zeta[:, 0] ** 2                         # boomerang
