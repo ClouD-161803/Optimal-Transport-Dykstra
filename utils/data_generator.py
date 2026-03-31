@@ -32,77 +32,55 @@ class RoughLineShearFunction(ShearFunction):
         return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
 
 
-class GaussianVonMisesShearFunction(ShearFunction):
-    """Directional nD Gaussian-von-Mises shear."""
+class GVMShearFunction(ShearFunction):
+    """Quadratic GVM shear, parameterised for robust n-dimensional use."""
 
     def __init__(
         self,
-        amplitude: float = 0.35,
-        kappa: float = 6.0,
-        radius_mean: float = 1.2,
-        radius_std: float = 0.45,
-        mean_direction: np.ndarray | None = None,
+        alpha: float,
+        beta: np.ndarray,
+        gamma: np.ndarray,
     ) -> None:
-        if radius_std <= 0.0:
-            raise ValueError("radius_std must be positive.")
+        self.alpha = float(alpha)
+        self.beta = np.asarray(beta, dtype=float).reshape(-1)
+        gamma_array = np.asarray(gamma, dtype=float)
+        if gamma_array.ndim != 2:
+            raise ValueError("gamma must be a 2D array-like object.")
+        self.gamma = gamma_array
 
-        self.amplitude = float(amplitude)
-        self.kappa = float(kappa)
-        self.radius_mean = float(radius_mean)
-        self.radius_std = float(radius_std)
-        self.mean_direction = None if mean_direction is None else np.asarray(mean_direction, dtype=float).reshape(-1)
+    @staticmethod
+    def _resolved_beta(beta: np.ndarray, num_dimensions: int) -> np.ndarray:
+        """Normalise beta shape against ambient dimension and disable self-shear on index 1."""
+        resolved = np.zeros(num_dimensions, dtype=float)
+        upper = min(beta.size, num_dimensions)
+        if upper > 0:
+            resolved[:upper] = beta[:upper]
+        if num_dimensions > 1:
+            resolved[1] = 0.0
+        return resolved
 
-    def _resolved_unit_direction(self, num_dimensions: int) -> np.ndarray:
-        """Build and normalise a direction vector in the active ambient dimension."""
-        if self.mean_direction is None:
-            direction = np.pad(
-                np.array([1.0, 1.0], dtype=float),
-                (0, max(0, num_dimensions - 2)),
-                mode="constant",
-            )[:num_dimensions]
-        elif self.mean_direction.size < num_dimensions:
-            direction = np.pad(
-                self.mean_direction,
-                (0, num_dimensions - self.mean_direction.size),
-                mode="constant",
-            )
-        else:
-            direction = self.mean_direction[:num_dimensions].copy()
-
-        direction_norm = np.linalg.norm(direction)
-        if direction_norm <= 0.0:
-            raise ValueError("mean_direction must have non-zero norm.")
-        return direction / direction_norm
-
-    def shear(self, zeta: np.ndarray) -> np.ndarray:
-        num_dimensions = int(zeta.shape[1])
-        direction = self._resolved_unit_direction(num_dimensions)
-
-        radius = np.linalg.norm(zeta, axis=1)
-        radius_safe = np.maximum(radius, 1e-12)
-        unit_vectors = zeta / radius_safe[:, None]
-        cos_theta = np.clip(unit_vectors @ direction, -1.0, 1.0)
-
-        gaussian_term = np.exp(-0.5 * ((radius - self.radius_mean) / self.radius_std) ** 2)
-        von_mises_term = np.exp(self.kappa * (cos_theta - 1.0))
-        return self.amplitude * gaussian_term * von_mises_term
-
-
-class AxialGaussianVonMisesShearFunction(GaussianVonMisesShearFunction):
-    """Axial nD Gaussian-von-Mises shear with symmetric angular peaks at +/-direction."""
+    @staticmethod
+    def _resolved_gamma(gamma: np.ndarray, num_dimensions: int) -> np.ndarray:
+        """Normalise gamma shape against ambient dimension and disable index-1 self-coupling."""
+        resolved = np.zeros((num_dimensions, num_dimensions), dtype=float)
+        rows = min(gamma.shape[0], num_dimensions)
+        cols = min(gamma.shape[1], num_dimensions)
+        if rows > 0 and cols > 0:
+            resolved[:rows, :cols] = gamma[:rows, :cols]
+        if num_dimensions > 1:
+            resolved[1, :] = 0.0
+            resolved[:, 1] = 0.0
+        return resolved
 
     def shear(self, zeta: np.ndarray) -> np.ndarray:
+        """Compute per-particle shear from alpha + beta^T z + 0.5 * z^T gamma z."""
         num_dimensions = int(zeta.shape[1])
-        direction = self._resolved_unit_direction(num_dimensions)
+        beta = self._resolved_beta(self.beta, num_dimensions)
+        gamma = self._resolved_gamma(self.gamma, num_dimensions)
 
-        radius = np.linalg.norm(zeta, axis=1)
-        radius_safe = np.maximum(radius, 1e-12)
-        unit_vectors = zeta / radius_safe[:, None]
-        cos_theta = np.clip(unit_vectors @ direction, -1.0, 1.0)
-
-        gaussian_term = np.exp(-0.5 * ((radius - self.radius_mean) / self.radius_std) ** 2)
-        axial_von_mises_term = np.exp(self.kappa * ((cos_theta ** 2) - 1.0))
-        return self.amplitude * gaussian_term * axial_von_mises_term
+        linear_term = zeta @ beta
+        quadratic_term = np.einsum("bi,ij,bj->b", zeta, gamma, zeta)
+        return self.alpha + linear_term + 0.5 * quadratic_term
 
 
 class DataGenerator:

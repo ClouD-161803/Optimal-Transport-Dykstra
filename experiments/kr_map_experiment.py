@@ -15,10 +15,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DykstraPlotter, DistributionPlotter
 from utils import (
-    AxialGaussianVonMisesShearFunction,
     BoomerangShearFunction,
     DataGenerator,
-    GaussianVonMisesShearFunction,
+    GVMShearFunction,
     RoughLineShearFunction,
 )
 from utils import Basis, HermiteBasis, KRMap
@@ -879,18 +878,20 @@ if __name__ == "__main__":
     PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = [0, -2, -1] \
         if PLOT_DYKSTRA_ITERATES else None
     PLOT_DISTRIBUTIONS: bool = True
-    X_LIM: tuple[float, float] | None = (-10.0, 10.0) \
+    PLOT_SIZE: float = 20.0 \
+        if PLOT_DISTRIBUTIONS else 0.0
+    X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) \
         if PLOT_DISTRIBUTIONS else None
-    Y_LIM: tuple[float, float] | None = (-10.0, 10.0) \
+    Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) \
         if PLOT_DISTRIBUTIONS else None
 
     # SEED = int(time.time() * 1000) % 1000000
     SEED: int = 1
 
     NUM_DIMENSIONS: int = 2
-    NUM_PARTICLES: int = 200
+    NUM_PARTICLES: int = 2500
 
-    MAX_OUTER_ITER: int = 1
+    MAX_OUTER_ITER: int = 10000
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
@@ -902,7 +903,7 @@ if __name__ == "__main__":
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = None
+    BATCH_SIZE: int | None = 1000
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
     LEARNING_RATE: float = 1
@@ -914,32 +915,17 @@ if __name__ == "__main__":
     PRUNE_INTERVAL: int = 100
 
     # Data
-    VM_AMPLITUDE: float = 2.0
-    VM_KAPPA: float = 0.1
-    VM_RADIUS_MEAN: float = 1.8
-    VM_RADIUS_STD: float = 0.30
-    VM_MEAN_DIRECTION: np.ndarray = np.pad(
-        np.array([1.0, 0.0], dtype=float),
-        (0, max(0, NUM_DIMENSIONS - 2)),
-        mode="constant",
-    )[:NUM_DIMENSIONS]
+    GVM_ALPHA: float = -3.2
+    GVM_BETA: np.ndarray = np.array([0.0, 0.0])
+    GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]])
 
-    SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
+    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
     # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
-    # SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # directional nD Gaussian-von-Mises shear
-    #     amplitude=VM_AMPLITUDE,
-    #     kappa=VM_KAPPA,
-    #     radius_mean=VM_RADIUS_MEAN,
-    #     radius_std=VM_RADIUS_STD,
-    #     mean_direction=VM_MEAN_DIRECTION,
-    # )
-    # SHEAR_FUNCTION_MODEL = AxialGaussianVonMisesShearFunction(  # axial nD Gaussian-von-Mises shear
-    #     amplitude=VM_AMPLITUDE,
-    #     kappa=VM_KAPPA,
-    #     radius_mean=VM_RADIUS_MEAN,
-    #     radius_std=VM_RADIUS_STD,
-    #     mean_direction=VM_MEAN_DIRECTION,
-    # )
+    SHEAR_FUNCTION_MODEL = GVMShearFunction(  # quadratic GVM shear
+        alpha=GVM_ALPHA,
+        beta=GVM_BETA,
+        gamma=GVM_GAMMA,
+    )
 
     DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
     DEGREE: int = 2

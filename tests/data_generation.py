@@ -7,49 +7,36 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils import DistributionPlotter
 from utils import (
-    AxialGaussianVonMisesShearFunction,
     BoomerangShearFunction,
     DataGenerator,
-    GaussianVonMisesShearFunction,
+    GVMShearFunction,
     RoughLineShearFunction,
 )
 
 if __name__ == "__main__":
-    M = 1000
+    M = 2500
     SEED = 42
     NUM_DIMENSIONS = 2
-    PLOT_SIZE = 5.0
+    PLOT_SIZE = 20.0
     DISTRIBUTION_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
     DISTRIBUTION_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
     # Line
     SIGMA = 0.15
 
-    # GVM
-    VM_AMPLITUDE = 4.0
-    VM_KAPPA = 0.1
-    VM_RADIUS_MEAN = 1.3
-    VM_RADIUS_STD = 0.5
-    VM_MEAN_DIRECTION = np.array([1.0, 0.0], dtype=float)
+    # GVM tuned to resemble the paper's last-row thin, stretched U-shape (panels e/f)
+    GVM_ALPHA = -3.2
+    GVM_BETA = np.array([0.0, 0.0], dtype=float)
+    GVM_GAMMA = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
 
     # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
 
     # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=SIGMA)  # rough line near y=x shear
 
-    # SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # directional nD Gaussian-von-Mises shear
-    #     amplitude=VM_AMPLITUDE,
-    #     kappa=VM_KAPPA,
-    #     radius_mean=VM_RADIUS_MEAN,
-    #     radius_std=VM_RADIUS_STD,
-    #     mean_direction=VM_MEAN_DIRECTION,
-    # )
-
-    SHEAR_FUNCTION_MODEL = AxialGaussianVonMisesShearFunction(  # axial nD Gaussian-von-Mises shear
-        amplitude=VM_AMPLITUDE,
-        kappa=VM_KAPPA,
-        radius_mean=VM_RADIUS_MEAN,
-        radius_std=VM_RADIUS_STD,
-        mean_direction=VM_MEAN_DIRECTION,
+    SHEAR_FUNCTION_MODEL = GVMShearFunction(  # quadratic GVM shear
+        alpha=GVM_ALPHA,
+        beta=GVM_BETA,
+        gamma=GVM_GAMMA,
     )
 
     generator = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)

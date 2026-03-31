@@ -6,10 +6,9 @@ from .projection_solver import (
     DykstraStallDetectionSolver,
 )
 from .data_generator import (
-    AxialGaussianVonMisesShearFunction,
     BoomerangShearFunction,
     DataGenerator,
-    GaussianVonMisesShearFunction,
+    GVMShearFunction,
     RoughLineShearFunction,
     generate_crescent_data_nd,
 )
