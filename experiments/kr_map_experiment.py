@@ -742,36 +742,38 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS: bool = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 69
+    SEED: int = 30032026
 
-    NUM_DIMENSIONS: int = 6
-    NUM_PARTICLES: int = 20
+    NUM_DIMENSIONS: int = 2
+    NUM_PARTICLES: int = 500
 
-    MAX_OUTER_ITER: int = 4
+    MAX_OUTER_ITER: int = 10000
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
-    L1_REG: float = 0.05
+    L1_REG: float = 0.0
 
     # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    BASE_INNER_ITER: int = 10
-    MAX_INNER_ITERS: int = 10 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    BASE_INNER_ITER: int = 1
+    MAX_INNER_ITERS: int = 1 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
     INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = None
+    BATCH_SIZE: int | None = 100
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
-    LEARNING_RATE: float = 1
-    LR_DECAY: float = 1e-4 \
-        if BATCH_SIZE is not None else 0.0
+    LEARNING_RATE: float = 0.25
+    LR_DECAY: float = 1e-2 \
+        if BATCH_SIZE is not None else 0.0 # LR = LR_0 / (1 + LR_DECAY * t)
 
     # IHT
-    PRUNE_THRESHOLD: float = 1e-4
+    PRUNE_THRESHOLD: float = 1e-2
     PRUNE_INTERVAL: int = 100
 
+    SIGMA: float = 0.15
     def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
-        return zeta[:, 0] ** 2
+        # return zeta[:, 0] ** 2                         # boomerang
+        return zeta[:, 0] - (1.0 - SIGMA) * zeta[:, 1]   # straight line
 
     DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION)
     DEGREE: int = 2
