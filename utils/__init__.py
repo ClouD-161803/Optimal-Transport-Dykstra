@@ -5,7 +5,14 @@ from .projection_solver import (
     DykstraMapHybridSolver,
     DykstraStallDetectionSolver,
 )
-from .data_generator import DataGenerator, generate_crescent_data_2d, generate_crescent_data_nd
+from .data_generator import (
+    BoomerangShearFunction,
+    DataGenerator,
+    GaussianVonMisesShearFunction,
+    RoughLineShearFunction,
+    generate_crescent_data_2d,
+    generate_crescent_data_nd,
+)
 from .hermite import hermite_polynomial
 from .optimal_transport import (
     Basis,

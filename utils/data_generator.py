@@ -1,5 +1,88 @@
-import numpy as np
+from abc import ABC, abstractmethod
 from typing import Callable
+
+import numpy as np
+
+
+class ShearFunction(ABC):
+    """Base interface for shear-function families used by DataGenerator."""
+
+    @abstractmethod
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        """Compute one scalar shear value per particle."""
+
+    def __call__(self, zeta: np.ndarray) -> np.ndarray:
+        return self.shear(zeta)
+
+
+class BoomerangShearFunction(ShearFunction):
+    """Classic crescent/boomerang shear: x1^2 added to x2."""
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        return zeta[:, 0] ** 2
+
+
+class RoughLineShearFunction(ShearFunction):
+    """Approximately linear shear around y = x with tunable spread."""
+
+    def __init__(self, sigma: float = 0.15) -> None:
+        self.sigma = float(sigma)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
+
+
+class GaussianVonMisesShearFunction(ShearFunction):
+    """Directional nD Gaussian-von-Mises shear."""
+
+    def __init__(
+        self,
+        amplitude: float = 0.35,
+        kappa: float = 6.0,
+        radius_mean: float = 1.2,
+        radius_std: float = 0.45,
+        mean_direction: np.ndarray | None = None,
+    ) -> None:
+        if radius_std <= 0.0:
+            raise ValueError("radius_std must be positive.")
+
+        self.amplitude = float(amplitude)
+        self.kappa = float(kappa)
+        self.radius_mean = float(radius_mean)
+        self.radius_std = float(radius_std)
+        self.mean_direction = None if mean_direction is None else np.asarray(mean_direction, dtype=float).reshape(-1)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        num_dimensions = int(zeta.shape[1])
+
+        if self.mean_direction is None:
+            direction = np.pad(
+                np.array([1.0, 1.0], dtype=float),
+                (0, max(0, num_dimensions - 2)),
+                mode="constant",
+            )[:num_dimensions]
+        elif self.mean_direction.size < num_dimensions:
+            direction = np.pad(
+                self.mean_direction,
+                (0, num_dimensions - self.mean_direction.size),
+                mode="constant",
+            )
+        else:
+            direction = self.mean_direction[:num_dimensions].copy()
+
+        direction_norm = np.linalg.norm(direction)
+        if direction_norm <= 0.0:
+            raise ValueError("mean_direction must have non-zero norm.")
+        direction /= direction_norm
+
+        radius = np.linalg.norm(zeta, axis=1)
+        radius_safe = np.maximum(radius, 1e-12)
+        unit_vectors = zeta / radius_safe[:, None]
+        cos_theta = np.clip(unit_vectors @ direction, -1.0, 1.0)
+
+        gaussian_term = np.exp(-0.5 * ((radius - self.radius_mean) / self.radius_std) ** 2)
+        von_mises_term = np.exp(self.kappa * (cos_theta - 1.0))
+        return self.amplitude * gaussian_term * von_mises_term
 
 
 class DataGenerator:
@@ -7,9 +90,9 @@ class DataGenerator:
 
     def __init__(
         self,
-        shear_function: Callable[[np.ndarray], np.ndarray] | None = None,
+        shear_function: Callable[[np.ndarray], np.ndarray] | ShearFunction | None = None,
     ) -> None:
-        self.shear_function = shear_function or self._default_shear_function
+        self.shear_function = shear_function or BoomerangShearFunction()
 
     def generate(
         self,
@@ -36,11 +119,6 @@ class DataGenerator:
             )
         z[:, 1] = zeta[:, 1] + shear_values
         return z
-
-    @staticmethod
-    def _default_shear_function(zeta: np.ndarray) -> np.ndarray:
-        """Default crescent shear: x₁² added to x₂."""
-        return zeta[:, 0] ** 2
 
 def generate_crescent_data_nd(
     num_particles: int,

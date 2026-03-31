@@ -14,7 +14,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DykstraPlotter, DistributionPlotter
-from utils import DataGenerator
+from utils import (
+    BoomerangShearFunction,
+    DataGenerator,
+    GaussianVonMisesShearFunction,
+    RoughLineShearFunction,
+)
 from utils import Basis, HermiteBasis, KRMap
 from utils import ProjectedGradientDescent
 
@@ -728,7 +733,7 @@ def run_benchmark() -> list[dict[str, Any]]:
         )
 
     dykstra_kwargs = dict(DYKSTRA_KWARGS)
-    if SAVE_FULL_RUN_ITERATES_JSON:
+    if SAVE_FULL_RUN_ITERATES:
         dykstra_kwargs["track_error"] = True
 
     normal_samples, z_samples = DATA_GENERATOR.generate(
@@ -760,12 +765,12 @@ def run_benchmark() -> list[dict[str, Any]]:
         prune_threshold=PRUNE_THRESHOLD,
         prune_interval=PRUNE_INTERVAL,
         enforce_matching=ENFORCE_MATCHING,
-        store_full_projection_histories=SAVE_FULL_RUN_ITERATES_JSON,
+        store_full_projection_histories=SAVE_FULL_RUN_ITERATES,
     )
 
     full_run_json_path = None
     full_run_npz_path = None
-    if SAVE_FULL_RUN_ITERATES_JSON:
+    if SAVE_FULL_RUN_ITERATES:
         full_run_npz_path, npz_component_index = _save_full_run_iterates_npz(
             results=results,
             output_dir=os.path.join(
@@ -857,7 +862,7 @@ def run_benchmark() -> list[dict[str, Any]]:
 if __name__ == "__main__":
 
     RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
-    SAVE_FULL_RUN_ITERATES_JSON: bool = True
+    SAVE_FULL_RUN_ITERATES: bool = False
     ENFORCE_MATCHING: bool = False
     PLOT_DYKSTRA_ITERATES: bool = False
     PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = [0, -2, -1] \
@@ -865,12 +870,12 @@ if __name__ == "__main__":
     PLOT_DISTRIBUTIONS: bool = True
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 8888
+    SEED: int = 1
 
-    NUM_DIMENSIONS: int = 6
-    NUM_PARTICLES: int = 1000
+    NUM_DIMENSIONS: int = 2
+    NUM_PARTICLES: int = 200
 
-    MAX_OUTER_ITER: int = 10
+    MAX_OUTER_ITER: int = 1
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
@@ -882,7 +887,7 @@ if __name__ == "__main__":
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = 100
+    BATCH_SIZE: int | None = None
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
     LEARNING_RATE: float = 1
@@ -894,12 +899,27 @@ if __name__ == "__main__":
     PRUNE_INTERVAL: int = 100
 
     # Data
-    SIGMA: float = 0.15
-    def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
-        # return zeta[:, 0] ** 2                         # boomerang
-        return zeta[:, 0] - (1.0 - SIGMA) * zeta[:, 1]   # straight line
+    VM_AMPLITUDE: float = 2.0
+    VM_KAPPA: float = 0.1
+    VM_RADIUS_MEAN: float = 1.8
+    VM_RADIUS_STD: float = 0.30
+    VM_MEAN_DIRECTION: np.ndarray = np.pad(
+        np.array([1.0, 0.0], dtype=float),
+        (0, max(0, NUM_DIMENSIONS - 2)),
+        mode="constant",
+    )[:NUM_DIMENSIONS]
+    SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # nD Gaussian-von-Mises shear
+        amplitude=VM_AMPLITUDE,
+        kappa=VM_KAPPA,
+        radius_mean=VM_RADIUS_MEAN,
+        radius_std=VM_RADIUS_STD,
+        mean_direction=VM_MEAN_DIRECTION,
+    )
 
-    DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION)
+    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
+    # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
+
+    DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
     DEGREE: int = 2
     BASIS: Basis = HermiteBasis()
     KR_MAP: KRMap = KRMap(
