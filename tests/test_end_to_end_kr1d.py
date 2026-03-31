@@ -9,11 +9,12 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import generate_crescent_data_2d
 from utils import HermiteBasis, KRMap1D
 from utils import ProjectedGradientDescent
 from utils import DykstraPlotter
 from utils import (
+    BoomerangShearFunction,
+    DataGenerator,
     DykstraProjectionSolver,
     DykstraStallDetectionSolver,
 )
@@ -33,7 +34,8 @@ def test_dykstra_fast_forward_advantage() -> None:
     # Step 1 – Data
     num_particles: int = 500
     seed: int = 42
-    _, z = generate_crescent_data_2d(num_particles, seed=seed)
+    generator = DataGenerator(shear_function=BoomerangShearFunction())
+    _, z = generator.generate(num_particles=num_particles, num_dimensions=2, seed=seed)
     z1: np.ndarray = z[:, 0]
 
     # Step 2 – Model

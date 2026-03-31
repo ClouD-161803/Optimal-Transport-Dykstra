@@ -285,6 +285,8 @@ class DistributionPlotter(_BasePlotter):
         synthetic_samples: np.ndarray,
         mapped_samples: np.ndarray,
         solver_label: str,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -301,7 +303,7 @@ class DistributionPlotter(_BasePlotter):
             self._draw_distribution_panel(
                 ax=ax, samples=samples, title=title,
                 xlabel="$x_1$", ylabel="$x_2$", color=color,
-                s=16, xlim=(-10, 10), ylim=(-10, 10), grid_alpha=0.4,
+                s=16, xlim=xlim, ylim=ylim, grid_alpha=0.4,
             )
 
         return self._save_and_show(
@@ -314,6 +316,8 @@ class DistributionPlotter(_BasePlotter):
         synthetic_samples: np.ndarray,
         vanilla_mapped_samples: np.ndarray,
         fast_mapped_samples: np.ndarray,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -339,7 +343,7 @@ class DistributionPlotter(_BasePlotter):
             self._draw_distribution_panel(
                 ax=ax, samples=samples, title=title,
                 xlabel="$x_1$", ylabel="$x_2$", color=color,
-                s=16, grid_alpha=0.4,
+                s=16, xlim=xlim, ylim=ylim, grid_alpha=0.4,
             )
 
         return self._save_and_show(
@@ -353,6 +357,8 @@ class DistributionPlotter(_BasePlotter):
         seed: int,
         m: int,
         shear_label: str | None = None,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -365,20 +371,18 @@ class DistributionPlotter(_BasePlotter):
             cleaned_label = shear_label.strip()
             sheared_title = f"Sheared distribution ({cleaned_label})"
             filename_label = f"_SHEAR={cleaned_label}"
-            fig.suptitle(
-                f"Synthetic distribution comparison ({cleaned_label})",
-                fontsize=TITLE_FONT_SIZE,
-            )
 
         self._draw_distribution_panel(
             ax=ax1, samples=reference_samples,
             title=r"Standard normal $\mathcal{N}(0, I_2)$",
             xlabel="$z_1$", ylabel="$z_2$", color="blue",
+            xlim=xlim, ylim=ylim,
         )
         self._draw_distribution_panel(
             ax=ax2, samples=sheared_samples,
             title=sheared_title,
             xlabel="$x_1$", ylabel="$x_2$", color="red",
+            xlim=xlim, ylim=ylim,
         )
 
         default_filename = f"synthetic_distribution_SEED={seed}_M={m}{filename_label}.png"

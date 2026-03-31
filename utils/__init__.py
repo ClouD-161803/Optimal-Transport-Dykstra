@@ -11,7 +11,6 @@ from .data_generator import (
     DataGenerator,
     GaussianVonMisesShearFunction,
     RoughLineShearFunction,
-    generate_crescent_data_2d,
     generate_crescent_data_nd,
 )
 from .hermite import hermite_polynomial

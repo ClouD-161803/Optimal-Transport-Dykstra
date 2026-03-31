@@ -18,6 +18,8 @@ if __name__ == "__main__":
     M = 1000
     SEED = 42
     NUM_DIMENSIONS = 2
+    DISTRIBUTION_XLIM: tuple[float, float] | None = (-10.0, 10.0)
+    DISTRIBUTION_YLIM: tuple[float, float] | None = (-10.0, 10.0)
 
     # Rough-line parameters.
     SIGMA = 0.15
@@ -29,8 +31,8 @@ if __name__ == "__main__":
     VM_RADIUS_STD = 0.30
     VM_MEAN_DIRECTION = np.array([1.0, 0.0], dtype=float)
 
-    SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
-    # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=SIGMA)  # rough line near y=x shear
+    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
+    SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=SIGMA)  # rough line near y=x shear
     # SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # directional nD Gaussian-von-Mises shear
     #     amplitude=VM_AMPLITUDE,
     #     kappa=VM_KAPPA,
@@ -62,5 +64,7 @@ if __name__ == "__main__":
         seed=SEED,
         m=M,
         shear_label=shear_label,
+        xlim=DISTRIBUTION_XLIM,
+        ylim=DISTRIBUTION_YLIM,
         show=True,
     )

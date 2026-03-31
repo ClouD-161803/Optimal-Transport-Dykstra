@@ -664,6 +664,8 @@ def _plot_distribution_for_mode(
     results: list[dict[str, Any]],
     kr_map: KRMap,
     num_dimensions: int,
+    x_lim: tuple[float, float] | None,
+    y_lim: tuple[float, float] | None,
 ) -> None:
     """Plot mapped distributions for the selected solver mode."""
     if solver_mode == "both":
@@ -684,6 +686,8 @@ def _plot_distribution_for_mode(
             synthetic_samples=z_samples[:, :2],
             vanilla_mapped_samples=vanilla_mapped[:, :2],
             fast_mapped_samples=fast_mapped[:, :2],
+            xlim=x_lim,
+            ylim=y_lim,
             filename=build_distribution_filename(
                 f"kr{num_dimensions}d_distribution_comparison_"
             ),
@@ -700,6 +704,8 @@ def _plot_distribution_for_mode(
             synthetic_samples=z_samples[:, :2],
             mapped_samples=vanilla_mapped[:, :2],
             solver_label="vanilla Dykstra",
+            xlim=x_lim,
+            ylim=y_lim,
             filename=build_distribution_filename(
                 f"kr{num_dimensions}d_distribution_vanilla_"
             ),
@@ -716,6 +722,8 @@ def _plot_distribution_for_mode(
             synthetic_samples=z_samples[:, :2],
             mapped_samples=fast_mapped[:, :2],
             solver_label="fast-forward Dykstra",
+            xlim=x_lim,
+            ylim=y_lim,
             filename=build_distribution_filename(
                 f"kr{num_dimensions}d_distribution_fast_"
             ),
@@ -829,6 +837,8 @@ def run_benchmark() -> list[dict[str, Any]]:
             results=results,
             kr_map=KR_MAP,
             num_dimensions=NUM_DIMENSIONS,
+            x_lim=X_LIM,
+            y_lim=Y_LIM,
         )
 
     print(f"\nCompleted {NUM_DIMENSIONS}-dimensional KR component benchmark with seed {SEED}.")
@@ -869,6 +879,10 @@ if __name__ == "__main__":
     PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = [0, -2, -1] \
         if PLOT_DYKSTRA_ITERATES else None
     PLOT_DISTRIBUTIONS: bool = True
+    X_LIM: tuple[float, float] | None = (-10.0, 10.0) \
+        if PLOT_DISTRIBUTIONS else None
+    Y_LIM: tuple[float, float] | None = (-10.0, 10.0) \
+        if PLOT_DISTRIBUTIONS else None
 
     # SEED = int(time.time() * 1000) % 1000000
     SEED: int = 1

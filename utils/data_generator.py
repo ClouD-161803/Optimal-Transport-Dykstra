@@ -170,15 +170,3 @@ def generate_crescent_data_nd(
         num_dimensions=num_dimensions,
         seed=seed,
     )
-
-
-def generate_crescent_data_2d(
-    num_particles: int,
-    seed: int | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Backward-compatible 2D crescent data generator wrapper."""
-    return generate_crescent_data_nd(
-        num_particles=num_particles,
-        num_dimensions=2,
-        seed=seed,
-    )

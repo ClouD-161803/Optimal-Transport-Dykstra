@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils import DataGenerator
 from utils import DistributionPlotter
+from utils import BoomerangShearFunction
 from utils import HermiteBasis
 from utils import KRMap
 
@@ -34,6 +35,8 @@ def _run_single_reconstruction(
 		synthetic_samples=synthetic_samples[:, :2],
 		mapped_samples=mapped_samples[:, :2],
 		solver_label=f"assembled KR map ({benchmark_label})",
+		xlim=DISTRIBUTION_XLIM,
+		ylim=DISTRIBUTION_YLIM,
 		filename=plot_filename,
 		show=SHOW_PLOT,
 	)
@@ -50,7 +53,7 @@ def _run_single_reconstruction(
 
 def run_assembly_map_test() -> dict[str, dict[str, np.ndarray]]:
 	"""Run map reconstruction benchmarks using module-level configuration."""
-	data_generator = DataGenerator(shear_function=SHEAR_FUNCTION)
+	data_generator = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
 	normal_samples, synthetic_samples = data_generator.generate(
 		num_particles=NUM_PARTICLES,
 		num_dimensions=NUM_DIMENSIONS,
@@ -97,9 +100,7 @@ def run_assembly_map_test() -> dict[str, dict[str, np.ndarray]]:
 
 
 if __name__ == "__main__":
-	def SHEAR_FUNCTION(zeta: np.ndarray) -> np.ndarray:
-		"""Experiment shear function applied internally by DataGenerator."""
-		return zeta[:, 0] ** 2
+	SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
 
 	SEED = 42
 	NUM_PARTICLES = 1000
@@ -142,5 +143,7 @@ if __name__ == "__main__":
 		f"assemble_map_reconstruction_truncated_SEED={SEED}_M={NUM_PARTICLES}.png"
 	)
 	SHOW_PLOT = False
+	DISTRIBUTION_XLIM: tuple[float, float] | None = (-10.0, 10.0)
+	DISTRIBUTION_YLIM: tuple[float, float] | None = (-10.0, 10.0)
 
 	run_assembly_map_test()
