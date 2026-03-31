@@ -906,7 +906,7 @@ if __name__ == "__main__":
     BATCH_SIZE: int | None = 1000
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
-    LEARNING_RATE: float = 1
+    LEARNING_RATE: float = 0.01
     LR_DECAY: float = 1e-2 \
         if BATCH_SIZE is not None else 0.0 # LR = LR_0 / (1 + LR_DECAY * t)
 
