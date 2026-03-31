@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 import numpy as np
+import scipy.stats
 
 
 class ShearFunction(ABC):
@@ -16,41 +17,31 @@ class ShearFunction(ABC):
 
 
 class BoomerangShearFunction(ShearFunction):
-    """Classic crescent/boomerang shear: x1^2 added to x2."""
-
-    def shear(self, zeta: np.ndarray) -> np.ndarray:
-        return zeta[:, 0] ** 2
-
-
-class RoughLineShearFunction(ShearFunction):
-    """Approximately linear shear around y = x with tunable spread."""
-
-    def __init__(self, sigma: float = 0.15) -> None:
-        self.sigma = float(sigma)
-
-    def shear(self, zeta: np.ndarray) -> np.ndarray:
-        return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
-
-
-class GVMShearFunction(ShearFunction):
-    """Quadratic GVM shear, parameterised for robust n-dimensional use."""
+    """Quadratic linking shear with robust n-dimensional padding."""
 
     def __init__(
         self,
-        alpha: float,
-        beta: np.ndarray,
-        gamma: np.ndarray,
+        alpha: float = 0.0,
+        beta: np.ndarray | None = None,
+        gamma: np.ndarray | None = None,
     ) -> None:
         self.alpha = float(alpha)
-        self.beta = np.asarray(beta, dtype=float).reshape(-1)
-        gamma_array = np.asarray(gamma, dtype=float)
-        if gamma_array.ndim != 2:
-            raise ValueError("gamma must be a 2D array-like object.")
-        self.gamma = gamma_array
+        self.beta = (
+            np.asarray(beta, dtype=float).reshape(-1)
+            if beta is not None
+            else np.zeros(2, dtype=float)
+        )
+        if gamma is None:
+            self.gamma = np.array([[2.0, 0.0], [0.0, 0.0]], dtype=float)
+        else:
+            gamma_array = np.asarray(gamma, dtype=float)
+            if gamma_array.ndim != 2:
+                raise ValueError("gamma must be a 2D array-like object.")
+            self.gamma = gamma_array
 
     @staticmethod
     def _resolved_beta(beta: np.ndarray, num_dimensions: int) -> np.ndarray:
-        """Normalise beta shape against ambient dimension and disable self-shear on index 1."""
+        """Normalise beta to ambient dimension and disable index-1 self-shear."""
         resolved = np.zeros(num_dimensions, dtype=float)
         upper = min(beta.size, num_dimensions)
         if upper > 0:
@@ -61,7 +52,7 @@ class GVMShearFunction(ShearFunction):
 
     @staticmethod
     def _resolved_gamma(gamma: np.ndarray, num_dimensions: int) -> np.ndarray:
-        """Normalise gamma shape against ambient dimension and disable index-1 self-coupling."""
+        """Normalise gamma to ambient dimension and disable index-1 self-coupling."""
         resolved = np.zeros((num_dimensions, num_dimensions), dtype=float)
         rows = min(gamma.shape[0], num_dimensions)
         cols = min(gamma.shape[1], num_dimensions)
@@ -72,15 +63,30 @@ class GVMShearFunction(ShearFunction):
             resolved[:, 1] = 0.0
         return resolved
 
-    def shear(self, zeta: np.ndarray) -> np.ndarray:
-        """Compute per-particle shear from alpha + beta^T z + 0.5 * z^T gamma z."""
-        num_dimensions = int(zeta.shape[1])
-        beta = self._resolved_beta(self.beta, num_dimensions)
-        gamma = self._resolved_gamma(self.gamma, num_dimensions)
+    def resolved_parameters(self, num_dimensions: int) -> tuple[np.ndarray, np.ndarray]:
+        """Return beta and gamma padded/truncated to the current dimension."""
+        return (
+            self._resolved_beta(self.beta, num_dimensions),
+            self._resolved_gamma(self.gamma, num_dimensions),
+        )
 
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        """Compute alpha + zeta beta + 0.5 * diag(zeta gamma zeta^T)."""
+        num_dimensions = int(zeta.shape[1])
+        beta, gamma = self.resolved_parameters(num_dimensions)
         linear_term = zeta @ beta
         quadratic_term = np.einsum("bi,ij,bj->b", zeta, gamma, zeta)
         return self.alpha + linear_term + 0.5 * quadratic_term
+
+
+class RoughLineShearFunction(ShearFunction):
+    """Approximately linear shear around y = x with tunable spread."""
+
+    def __init__(self, sigma: float = 0.15) -> None:
+        self.sigma = float(sigma)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
 
 
 class DataGenerator:
@@ -116,6 +122,33 @@ class DataGenerator:
                 "shear_function must return one scalar shear value per particle."
             )
         z[:, 1] = zeta[:, 1] + shear_values
+        return z
+
+
+class GVMDataGenerator(DataGenerator):
+    """Generate true GVM samples by Gaussian-to-von-Mises transport."""
+
+    def __init__(
+        self,
+        alpha: float,
+        beta: np.ndarray,
+        gamma: np.ndarray,
+        kappa: float,
+    ) -> None:
+        self.linking_function = BoomerangShearFunction(
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
+        )
+        self.kappa = float(kappa)
+        super().__init__(shear_function=self.linking_function)
+
+    def _apply_shear(self, zeta: np.ndarray) -> np.ndarray:
+        """Apply the exact PIT map from Gaussian phase to von Mises phase."""
+        z = zeta.copy()
+        theta_loc = self.linking_function.shear(zeta)
+        u = scipy.stats.norm.cdf(zeta[:, 1])
+        z[:, 1] = scipy.stats.vonmises.ppf(u, self.kappa, loc=theta_loc)
         return z
 
 def generate_crescent_data_nd(
