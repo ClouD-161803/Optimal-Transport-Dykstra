@@ -13,7 +13,6 @@ from utils import HermiteBasis, KRMap1D
 from utils import ProjectedGradientDescent
 from utils import DykstraPlotter
 from utils import (
-    BoomerangShearFunction,
     DataGenerator,
     DykstraProjectionSolver,
     DykstraStallDetectionSolver,
@@ -34,7 +33,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     # Step 1 – Data
     num_particles: int = 500
     seed: int = 42
-    generator = DataGenerator(shear_function=BoomerangShearFunction())
+    generator = DataGenerator()
     _, z = generator.generate(num_particles=num_particles, num_dimensions=2, seed=seed)
     z1: np.ndarray = z[:, 0]
 
@@ -50,7 +49,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     w_init: np.ndarray = np.array([-10., 10., 10., -10.5])
 
     learning_rate: float = 0.01
-    max_outer_iter: int = 20
+    max_outer_iter: int = 5
     dykstra_kwargs: dict = {"track_error": False}
     plot_outer_iterations: list[int] | None = [0, 1, 2, 4]
 

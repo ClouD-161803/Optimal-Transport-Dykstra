@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from utils import DataGenerator
 from utils import DistributionPlotter
-from utils import BoomerangShearFunction
 from utils import HermiteBasis
 from utils import KRMap
 
@@ -53,7 +52,7 @@ def _run_single_reconstruction(
 
 def run_assembly_map_test() -> dict[str, dict[str, np.ndarray]]:
 	"""Run map reconstruction benchmarks using module-level configuration."""
-	data_generator = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
+	data_generator = DataGenerator()
 	normal_samples, synthetic_samples = data_generator.generate(
 		num_particles=NUM_PARTICLES,
 		num_dimensions=NUM_DIMENSIONS,
@@ -100,8 +99,6 @@ def run_assembly_map_test() -> dict[str, dict[str, np.ndarray]]:
 
 
 if __name__ == "__main__":
-	SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
-
 	SEED = 42
 	NUM_PARTICLES = 1000
 	NUM_DIMENSIONS = 2

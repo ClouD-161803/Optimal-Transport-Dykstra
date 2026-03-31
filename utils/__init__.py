@@ -8,7 +8,7 @@ from .projection_solver import (
 from .data_generator import (
     BoomerangShearFunction,
     DataGenerator,
-    GVMShearFunction,
+    GVMDataGenerator,
     RoughLineShearFunction,
     generate_crescent_data_nd,
 )

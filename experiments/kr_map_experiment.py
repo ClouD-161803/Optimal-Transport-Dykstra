@@ -17,7 +17,7 @@ from utils import DykstraPlotter, DistributionPlotter
 from utils import (
     BoomerangShearFunction,
     DataGenerator,
-    GVMShearFunction,
+    GVMDataGenerator,
     RoughLineShearFunction,
 )
 from utils import Basis, HermiteBasis, KRMap
@@ -886,10 +886,10 @@ if __name__ == "__main__":
         if PLOT_DISTRIBUTIONS else None
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 1
+    SEED: int = 1111
 
     NUM_DIMENSIONS: int = 2
-    NUM_PARTICLES: int = 2500
+    NUM_PARTICLES: int = 200
 
     MAX_OUTER_ITER: int = 10000
     DYKSTRA_KWARGS: dict = {"track_error": False}
@@ -897,13 +897,13 @@ if __name__ == "__main__":
     L1_REG: float = 0.0
 
     # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-    BASE_INNER_ITER: int = 10
-    MAX_INNER_ITERS: int = 100 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
+    BASE_INNER_ITER: int = 1
+    MAX_INNER_ITERS: int = 10 # int(BASE_INNER_ITER * (MAX_OUTER_ITER ** INEXACT_POWER))
     INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER) # 0 for fixed dykstra budget
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = 1000
+    BATCH_SIZE: int | None = None
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
     LEARNING_RATE: float = 0.01
@@ -914,20 +914,25 @@ if __name__ == "__main__":
     PRUNE_THRESHOLD: float = 1e-2
     PRUNE_INTERVAL: int = 100
 
-    # Data
+    # Data generation
     GVM_ALPHA: float = -3.2
-    GVM_BETA: np.ndarray = np.array([0.0, 0.0])
-    GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]])
+    GVM_BETA: np.ndarray = np.array([0.0, 0.0], dtype=float)
+    GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
+    GVM_KAPPA: float = 12.0
+    LINE_SIGMA: float = 0.15
 
-    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
-    # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
-    SHEAR_FUNCTION_MODEL = GVMShearFunction(  # quadratic GVM shear
-        alpha=GVM_ALPHA,
-        beta=GVM_BETA,
-        gamma=GVM_GAMMA,
+    # DATA_GENERATOR = GVMDataGenerator(
+    #     alpha=GVM_ALPHA,
+    #     beta=GVM_BETA,
+    #     gamma=GVM_GAMMA,
+    #     kappa=GVM_KAPPA,
+    # )
+    # DATA_GENERATOR = DataGenerator(
+    #     shear_function=BoomerangShearFunction(),  # classic boomerang: x_1^2 added to x_2
+    # )
+    DATA_GENERATOR = DataGenerator(
+        shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),  # line-like shear near y = x
     )
-
-    DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
     DEGREE: int = 2
     BASIS: Basis = HermiteBasis()
     KR_MAP: KRMap = KRMap(
