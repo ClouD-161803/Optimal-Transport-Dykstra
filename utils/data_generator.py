@@ -52,9 +52,8 @@ class GaussianVonMisesShearFunction(ShearFunction):
         self.radius_std = float(radius_std)
         self.mean_direction = None if mean_direction is None else np.asarray(mean_direction, dtype=float).reshape(-1)
 
-    def shear(self, zeta: np.ndarray) -> np.ndarray:
-        num_dimensions = int(zeta.shape[1])
-
+    def _resolved_unit_direction(self, num_dimensions: int) -> np.ndarray:
+        """Build and normalise a direction vector in the active ambient dimension."""
         if self.mean_direction is None:
             direction = np.pad(
                 np.array([1.0, 1.0], dtype=float),
@@ -73,7 +72,11 @@ class GaussianVonMisesShearFunction(ShearFunction):
         direction_norm = np.linalg.norm(direction)
         if direction_norm <= 0.0:
             raise ValueError("mean_direction must have non-zero norm.")
-        direction /= direction_norm
+        return direction / direction_norm
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        num_dimensions = int(zeta.shape[1])
+        direction = self._resolved_unit_direction(num_dimensions)
 
         radius = np.linalg.norm(zeta, axis=1)
         radius_safe = np.maximum(radius, 1e-12)
@@ -83,6 +86,23 @@ class GaussianVonMisesShearFunction(ShearFunction):
         gaussian_term = np.exp(-0.5 * ((radius - self.radius_mean) / self.radius_std) ** 2)
         von_mises_term = np.exp(self.kappa * (cos_theta - 1.0))
         return self.amplitude * gaussian_term * von_mises_term
+
+
+class AxialGaussianVonMisesShearFunction(GaussianVonMisesShearFunction):
+    """Axial nD Gaussian-von-Mises shear with symmetric angular peaks at +/-direction."""
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        num_dimensions = int(zeta.shape[1])
+        direction = self._resolved_unit_direction(num_dimensions)
+
+        radius = np.linalg.norm(zeta, axis=1)
+        radius_safe = np.maximum(radius, 1e-12)
+        unit_vectors = zeta / radius_safe[:, None]
+        cos_theta = np.clip(unit_vectors @ direction, -1.0, 1.0)
+
+        gaussian_term = np.exp(-0.5 * ((radius - self.radius_mean) / self.radius_std) ** 2)
+        axial_von_mises_term = np.exp(self.kappa * ((cos_theta ** 2) - 1.0))
+        return self.amplitude * gaussian_term * axial_von_mises_term
 
 
 class DataGenerator:

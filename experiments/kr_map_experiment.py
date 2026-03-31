@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
 from utils import DykstraPlotter, DistributionPlotter
 from utils import (
+    AxialGaussianVonMisesShearFunction,
     BoomerangShearFunction,
     DataGenerator,
     GaussianVonMisesShearFunction,
@@ -908,16 +909,23 @@ if __name__ == "__main__":
         (0, max(0, NUM_DIMENSIONS - 2)),
         mode="constant",
     )[:NUM_DIMENSIONS]
-    SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # nD Gaussian-von-Mises shear
+
+    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
+    # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
+    # SHEAR_FUNCTION_MODEL = GaussianVonMisesShearFunction(  # directional nD Gaussian-von-Mises shear
+    #     amplitude=VM_AMPLITUDE,
+    #     kappa=VM_KAPPA,
+    #     radius_mean=VM_RADIUS_MEAN,
+    #     radius_std=VM_RADIUS_STD,
+    #     mean_direction=VM_MEAN_DIRECTION,
+    # )
+    SHEAR_FUNCTION_MODEL = AxialGaussianVonMisesShearFunction(  # axial nD Gaussian-von-Mises shear
         amplitude=VM_AMPLITUDE,
         kappa=VM_KAPPA,
         radius_mean=VM_RADIUS_MEAN,
         radius_std=VM_RADIUS_STD,
         mean_direction=VM_MEAN_DIRECTION,
     )
-
-    # SHEAR_FUNCTION_MODEL = BoomerangShearFunction()  # boomerang shear
-    # SHEAR_FUNCTION_MODEL = RoughLineShearFunction(sigma=0.15)  # rough line near y=x shear
 
     DATA_GENERATOR = DataGenerator(shear_function=SHEAR_FUNCTION_MODEL)
     DEGREE: int = 2
