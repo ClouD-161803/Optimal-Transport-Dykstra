@@ -878,7 +878,7 @@ if __name__ == "__main__":
     PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = [0, -2, -1] \
         if PLOT_DYKSTRA_ITERATES else None
     PLOT_DISTRIBUTIONS: bool = True
-    PLOT_SIZE: float = 20.0 \
+    PLOT_SIZE: float = 7.0 \
         if PLOT_DISTRIBUTIONS else 0.0
     X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) \
         if PLOT_DISTRIBUTIONS else None
@@ -886,12 +886,12 @@ if __name__ == "__main__":
         if PLOT_DISTRIBUTIONS else None
 
     # SEED = int(time.time() * 1000) % 1000000
-    SEED: int = 1234
+    SEED: int = 12345
 
     NUM_DIMENSIONS: int = 2
-    NUM_PARTICLES: int = 2500
+    NUM_PARTICLES: int = 1000
 
-    MAX_OUTER_ITER: int = 17500
+    MAX_OUTER_ITER: int = 10000
     DYKSTRA_KWARGS: dict = {"track_error": False}
     GRADIENT_CLIP_VALUE: float = 10.0
     L1_REG: float = 0.0
@@ -903,7 +903,7 @@ if __name__ == "__main__":
     
     # SGD
     # BATCH_SIZE: int | None = None
-    BATCH_SIZE: int | None = 700
+    BATCH_SIZE: int | None = 300
     RNG_SEED: int | None = SEED + 1 \
         if BATCH_SIZE is not None else None # different seed
     LEARNING_RATE: float = 0.075
@@ -915,18 +915,23 @@ if __name__ == "__main__":
     PRUNE_INTERVAL: int = 100
 
     # Data generation (uncomment one)
-
     GVM_ALPHA: float = -3.2
     GVM_BETA: np.ndarray = np.array([0.0, 0.0], dtype=float)
     GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
     GVM_KAPPA: float = 12.0
     LINE_SIGMA: float = 0.15
 
+    # Distribution constraints
+    DATA_HALFSPACE_A: np.ndarray = np.array([[0.0, 1.0]], dtype=float)
+    DATA_HALFSPACE_B: np.ndarray = np.array([5.0], dtype=float)
+
     DATA_GENERATOR = GVMDataGenerator(
         alpha=GVM_ALPHA,
         beta=GVM_BETA,
         gamma=GVM_GAMMA,
         kappa=GVM_KAPPA,
+        halfspace_A=DATA_HALFSPACE_A,
+        halfspace_b=DATA_HALFSPACE_B,
     )
     # DATA_GENERATOR = DataGenerator(
     #     shear_function=BoomerangShearFunction(),  # classic boomerang: x_1^2 added to x_2

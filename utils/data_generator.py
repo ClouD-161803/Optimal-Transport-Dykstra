@@ -95,8 +95,62 @@ class DataGenerator:
     def __init__(
         self,
         shear_function: Callable[[np.ndarray], np.ndarray] | ShearFunction | None = None,
+        halfspace_A: np.ndarray | None = None,
+        halfspace_b: np.ndarray | None = None,
+        max_rejection_rounds: int = 1_000,
     ) -> None:
         self.shear_function = shear_function or BoomerangShearFunction()
+        self.max_rejection_rounds = int(max_rejection_rounds)
+        self.halfspace_A, self.halfspace_b = self._normalise_halfspace_constraints(
+            halfspace_A=halfspace_A,
+            halfspace_b=halfspace_b,
+        )
+
+    @staticmethod
+    def _normalise_halfspace_constraints(
+        halfspace_A: np.ndarray | None,
+        halfspace_b: np.ndarray | None,
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """Validate and store polyhedral constraints of form A @ z <= b."""
+        if (halfspace_A is None) != (halfspace_b is None):
+            raise ValueError(
+                "halfspace_A and halfspace_b must both be provided, or both be None."
+            )
+        if halfspace_A is None or halfspace_b is None:
+            return None, None
+
+        A = np.asarray(halfspace_A, dtype=float)
+        b = np.asarray(halfspace_b, dtype=float).reshape(-1)
+        if A.ndim != 2:
+            raise ValueError("halfspace_A must be a 2D array-like object.")
+        if A.shape[0] != b.shape[0]:
+            raise ValueError(
+                "halfspace_A and halfspace_b size mismatch: rows(A) must equal len(b)."
+            )
+        return A, b
+
+    def _resolved_halfspace_matrix(self, num_dimensions: int) -> np.ndarray | None:
+        """Pad/truncate configured half-space normals to ambient dimension."""
+        if self.halfspace_A is None:
+            return None
+        resolved = np.zeros((self.halfspace_A.shape[0], num_dimensions), dtype=float)
+        cols = min(self.halfspace_A.shape[1], num_dimensions)
+        if cols > 0:
+            resolved[:, :cols] = self.halfspace_A[:, :cols]
+        return resolved
+
+    def _inside_halfspace_constraints(
+        self,
+        z: np.ndarray,
+        num_dimensions: int,
+    ) -> np.ndarray:
+        """Return mask of particles satisfying all configured half-space constraints."""
+        if self.halfspace_A is None or self.halfspace_b is None:
+            return np.ones(z.shape[0], dtype=bool)
+        A_resolved = self._resolved_halfspace_matrix(num_dimensions)
+        if A_resolved is None or A_resolved.shape[0] == 0:
+            return np.ones(z.shape[0], dtype=bool)
+        return np.all((A_resolved @ z.T).T <= self.halfspace_b + 1e-12, axis=1)
 
     def generate(
         self,
@@ -109,9 +163,45 @@ class DataGenerator:
             raise ValueError("num_dimensions must be >= 2 for crescent data generation.")
 
         rng = np.random.default_rng(seed)
-        zeta = rng.standard_normal((num_particles, num_dimensions))
-        z = self._apply_shear(zeta)
-        return zeta, z
+
+        if self.halfspace_A is None:
+            zeta = rng.standard_normal((num_particles, num_dimensions))
+            z = self._apply_shear(zeta)
+            return zeta, z
+
+        zeta_chunks: list[np.ndarray] = []
+        z_chunks: list[np.ndarray] = []
+        accepted = 0
+        rounds = 0
+
+        while accepted < num_particles:
+            rounds += 1
+            if rounds > self.max_rejection_rounds:
+                raise RuntimeError(
+                    "Unable to generate enough particles satisfying half-space "
+                    "constraints. Relax constraints or increase max_rejection_rounds."
+                )
+
+            remaining = num_particles - accepted
+            batch_size = max(remaining, 2 * remaining)
+            zeta_candidate = rng.standard_normal((batch_size, num_dimensions))
+            z_candidate = self._apply_shear(zeta_candidate)
+            keep_mask = self._inside_halfspace_constraints(
+                z=z_candidate,
+                num_dimensions=num_dimensions,
+            )
+
+            if not np.any(keep_mask):
+                continue
+
+            zeta_kept = zeta_candidate[keep_mask]
+            z_kept = z_candidate[keep_mask]
+            take = min(remaining, zeta_kept.shape[0])
+            zeta_chunks.append(zeta_kept[:take])
+            z_chunks.append(z_kept[:take])
+            accepted += take
+
+        return np.vstack(zeta_chunks), np.vstack(z_chunks)
 
     def _apply_shear(self, zeta: np.ndarray) -> np.ndarray:
         """Apply the configured shear to the second coordinate."""
@@ -134,6 +224,9 @@ class GVMDataGenerator(DataGenerator):
         beta: np.ndarray,
         gamma: np.ndarray,
         kappa: float,
+        halfspace_A: np.ndarray | None = None,
+        halfspace_b: np.ndarray | None = None,
+        max_rejection_rounds: int = 1_000,
     ) -> None:
         self.linking_function = BoomerangShearFunction(
             alpha=alpha,
@@ -141,7 +234,12 @@ class GVMDataGenerator(DataGenerator):
             gamma=gamma,
         )
         self.kappa = float(kappa)
-        super().__init__(shear_function=self.linking_function)
+        super().__init__(
+            shear_function=self.linking_function,
+            halfspace_A=halfspace_A,
+            halfspace_b=halfspace_b,
+            max_rejection_rounds=max_rejection_rounds,
+        )
 
     def _apply_shear(self, zeta: np.ndarray) -> np.ndarray:
         """Apply the exact PIT map from Gaussian phase to von Mises phase."""
