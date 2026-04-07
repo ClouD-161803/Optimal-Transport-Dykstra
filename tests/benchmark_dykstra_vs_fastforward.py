@@ -8,8 +8,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
-from utils import DykstraPlotter
+from utils.plotter import DykstraPlotter
+from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
 
 def run_benchmark():
 

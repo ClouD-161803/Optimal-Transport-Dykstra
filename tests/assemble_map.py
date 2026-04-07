@@ -6,10 +6,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import DataGenerator
-from utils import DistributionPlotter
-from utils import HermiteBasis
-from utils import KRMap
+from utils.data_generator import DataGenerator
+from utils.optimal_transport import HermiteBasis, KRMap
+from utils.plotter import DistributionPlotter
 
 
 def _run_single_reconstruction(

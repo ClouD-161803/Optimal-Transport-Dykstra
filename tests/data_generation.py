@@ -5,13 +5,13 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import DistributionPlotter
-from utils import (
+from utils.data_generator import (
     BoomerangShearFunction,
     DataGenerator,
     GVMDataGenerator,
     RoughLineShearFunction,
 )
+from utils.plotter import DistributionPlotter
 
 if __name__ == "__main__":
     M = 2500

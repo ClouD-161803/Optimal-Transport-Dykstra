@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import hermite_polynomial
+from utils.hermite import hermite_polynomial
 
 def test_hermite_polynomials():
     x = np.linspace(-3, 3, 100)

@@ -10,7 +10,8 @@ from typing import Any
 import numpy as np
 
 from core.config import OptimizationConfig, SolverMode
-from utils import DistributionPlotter, DykstraPlotter, KRMap
+from utils.optimal_transport import KRMap
+from utils.plotter import DistributionPlotter, DykstraPlotter
 
 
 def to_json_safe(value: Any) -> Any:
@@ -370,4 +371,3 @@ def plot_distribution_for_mode(
         ),
         show=False,
     )
-

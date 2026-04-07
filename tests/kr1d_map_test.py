@@ -9,14 +9,13 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import HermiteBasis, KRMap1D
-from utils import ProjectedGradientDescent
-from utils import DykstraPlotter
-from utils import (
+from utils.data_generator import (
     DataGenerator,
-    DykstraProjectionSolver,
-    DykstraStallDetectionSolver,
 )
+from utils.optimal_transport import HermiteBasis, KRMap1D
+from utils.pgd_solver import ProjectedGradientDescent
+from utils.plotter import DykstraPlotter
+from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
 
 
 def test_dykstra_fast_forward_advantage() -> None:
@@ -46,7 +45,7 @@ def test_dykstra_fast_forward_advantage() -> None:
     A, b = kr_model.get_polyhedral_constraints(epsilon=1e-4)
 
     # Step 4 – Initial guess (identity map: S(z) = z)
-    w_init: np.ndarray = np.array([-10., 10., 10., -10.5])
+    w_init: np.ndarray = np.array([0., 1., 0., 0.])
 
     learning_rate: float = 0.01
     max_outer_iter: int = 5

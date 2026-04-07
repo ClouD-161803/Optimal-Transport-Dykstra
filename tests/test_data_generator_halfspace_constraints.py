@@ -5,8 +5,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import GVMDataGenerator
-from utils import DistributionPlotter
+from utils.data_generator import GVMDataGenerator
+from utils.plotter import DistributionPlotter
 
 
 def test_gvm_halfspace_constraint_x2_leq_5() -> None:

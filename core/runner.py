@@ -17,8 +17,9 @@ from core.io import (
     save_full_run_iterates_json,
     save_full_run_iterates_npz,
 )
-from utils import DykstraProjectionSolver, DykstraStallDetectionSolver
-from utils import KRMap, ProjectedGradientDescent
+from utils.optimal_transport import KRMap
+from utils.pgd_solver import ProjectedGradientDescent
+from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
 
 
 @dataclass(frozen=True)
@@ -472,4 +473,3 @@ def run_dataset_experiment(
         initial_guesses_by_component=initial_guesses_by_component,
     )
     return runner.run()
-

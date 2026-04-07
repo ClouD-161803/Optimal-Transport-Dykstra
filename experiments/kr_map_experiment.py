@@ -7,25 +7,26 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import cast
 from typing import Any
 
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.config import ExperimentConfig, OptimizationConfig, PlotConfig, RunConfig
+from core.config import ExperimentConfig, OptimizationConfig, PlotConfig, RunConfig, SolverMode
 from core.runner import (
     build_identity_initial_guesses,
     run_component_benchmark,
     run_synthetic_experiment,
 )
-from utils import Basis, HermiteBasis, KRMap
-from utils import (
+from utils.data_generator import (
     BoomerangShearFunction,
     DataGenerator,
     GVMDataGenerator,
     RoughLineShearFunction,
 )
+from utils.optimal_transport import Basis, HermiteBasis, KRMap
 
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -112,8 +113,12 @@ W_INIT: dict[int, np.ndarray] = build_identity_initial_guesses(
 
 def _build_experiment_config() -> ExperimentConfig:
     """Build a typed config from module-level constants."""
+    if RUN_SOLVER_MODE not in {"both", "vanilla", "fast"}:
+        raise ValueError("RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast'.")
+    validated_run_solver_mode = cast(SolverMode, RUN_SOLVER_MODE)
+
     run_config = RunConfig(
-        run_solver_mode=RUN_SOLVER_MODE,  # type: ignore[arg-type]
+        run_solver_mode=validated_run_solver_mode,
         save_full_run_iterates=SAVE_FULL_RUN_ITERATES,
         enforce_matching=ENFORCE_MATCHING,
     )
@@ -124,20 +129,23 @@ def _build_experiment_config() -> ExperimentConfig:
         x_lim=X_LIM,
         y_lim=Y_LIM,
     )
+    optimization_kwargs: dict[str, Any] = {
+        "learning_rate": LEARNING_RATE,
+        "max_outer_iter": MAX_OUTER_ITER,
+        "gradient_clip_value": GRADIENT_CLIP_VALUE,
+        "l1_reg": L1_REG,
+        "lr_decay": LR_DECAY,
+        "inexact_power": INEXACT_POWER,
+        "base_inner_iter": BASE_INNER_ITER,
+        "max_inner_iters": MAX_INNER_ITERS,
+        "batch_size": BATCH_SIZE,
+        "rng_seed": RNG_SEED,
+        "prune_threshold": PRUNE_THRESHOLD,
+        "prune_interval": PRUNE_INTERVAL,
+        "dykstra_kwargs": dict(DYKSTRA_KWARGS),
+    }
     optimization_config = OptimizationConfig(
-        learning_rate=LEARNING_RATE,
-        max_outer_iter=MAX_OUTER_ITER,
-        gradient_clip_value=GRADIENT_CLIP_VALUE,
-        l1_reg=L1_REG,
-        lr_decay=LR_DECAY,
-        inexact_power=INEXACT_POWER,
-        base_inner_iter=BASE_INNER_ITER,
-        max_inner_iters=MAX_INNER_ITERS,
-        batch_size=BATCH_SIZE,
-        rng_seed=RNG_SEED,
-        prune_threshold=PRUNE_THRESHOLD,
-        prune_interval=PRUNE_INTERVAL,
-        dykstra_kwargs=dict(DYKSTRA_KWARGS),
+        **optimization_kwargs,
     )
     return ExperimentConfig(
         seed=SEED,
@@ -175,21 +183,26 @@ def benchmark_kr_map_components_nd(
     store_full_projection_histories: bool = False,
 ) -> list[dict[str, Any]]:
     """Backward-compatible wrapper around the refactored core benchmark loop."""
-    optimization_config = OptimizationConfig(
-        learning_rate=learning_rate,
-        max_outer_iter=max_outer_iter,
-        gradient_clip_value=gradient_clip_value,
-        l1_reg=l1_reg,
-        lr_decay=lr_decay,
-        inexact_power=inexact_power,
-        base_inner_iter=base_inner_iter,
-        max_inner_iters=int(base_inner_iter * (max_outer_iter**max(inexact_power, 0.0))),
-        batch_size=batch_size,
-        rng_seed=rng_seed,
-        prune_threshold=prune_threshold,
-        prune_interval=prune_interval,
-        dykstra_kwargs=dict(dykstra_kwargs),
-    )
+    if run_solver_mode not in {"both", "vanilla", "fast"}:
+        raise ValueError("run_solver_mode must be one of: 'both', 'vanilla', 'fast'.")
+    validated_run_solver_mode = cast(SolverMode, run_solver_mode)
+
+    optimization_kwargs: dict[str, Any] = {
+        "learning_rate": learning_rate,
+        "max_outer_iter": max_outer_iter,
+        "gradient_clip_value": gradient_clip_value,
+        "l1_reg": l1_reg,
+        "lr_decay": lr_decay,
+        "inexact_power": inexact_power,
+        "base_inner_iter": base_inner_iter,
+        "max_inner_iters": int(base_inner_iter * (max_outer_iter**max(inexact_power, 0.0))),
+        "batch_size": batch_size,
+        "rng_seed": rng_seed,
+        "prune_threshold": prune_threshold,
+        "prune_interval": prune_interval,
+        "dykstra_kwargs": dict(dykstra_kwargs),
+    }
+    optimization_config = OptimizationConfig(**optimization_kwargs)
     return run_component_benchmark(
         z=z,
         num_dimensions=num_dimensions,
@@ -198,7 +211,7 @@ def benchmark_kr_map_components_nd(
         kr_map=kr_map,
         initial_guesses_by_component=initial_guesses_by_component,
         optimization_config=optimization_config,
-        run_solver_mode=run_solver_mode,  # type: ignore[arg-type]
+        run_solver_mode=validated_run_solver_mode,
         plot_dykstra_iterates=plot_dykstra_iterates,
         plot_outer_iterations=plot_outer_iterations,
         enforce_matching=enforce_matching,
