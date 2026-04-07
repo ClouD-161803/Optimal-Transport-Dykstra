@@ -285,6 +285,7 @@ class DistributionPlotter(_BasePlotter):
         synthetic_samples: np.ndarray,
         mapped_samples: np.ndarray,
         solver_label: str,
+        panel_titles: tuple[str, str, str] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
         filename: str | None = None,
@@ -293,10 +294,17 @@ class DistributionPlotter(_BasePlotter):
         """Plot a 3-panel comparison for one mapped KR solver output."""
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
+        if panel_titles is None:
+            panel_titles = (
+                r"Reference normal $\mathcal{N}(0, I_2)$",
+                "Synthetic distribution",
+                f"Mapped with {solver_label}",
+            )
+
         panels = [
-            (normal_samples, r"Reference normal $\mathcal{N}(0, I_2)$", "tab:blue"),
-            (synthetic_samples, "Synthetic distribution", "tab:red"),
-            (mapped_samples, f"Mapped with {solver_label}", "tab:green"),
+            (normal_samples, panel_titles[0], "tab:blue"),
+            (synthetic_samples, panel_titles[1], "tab:red"),
+            (mapped_samples, panel_titles[2], "tab:green"),
         ]
 
         for ax, (samples, title, color) in zip(axes, panels):
@@ -316,6 +324,7 @@ class DistributionPlotter(_BasePlotter):
         synthetic_samples: np.ndarray,
         vanilla_mapped_samples: np.ndarray,
         fast_mapped_samples: np.ndarray,
+        panel_titles: tuple[str, str, str, str] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
         filename: str | None = None,
@@ -332,11 +341,19 @@ class DistributionPlotter(_BasePlotter):
         """
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
+        if panel_titles is None:
+            panel_titles = (
+                r"Reference normal $\mathcal{N}(0, I_2)$",
+                "Synthetic distribution",
+                "Mapped with vanilla Dykstra",
+                "Mapped with fast-forward Dykstra",
+            )
+
         panels = [
-            (normal_samples, r"Reference normal $\mathcal{N}(0, I_2)$", "tab:blue"),
-            (synthetic_samples, "Synthetic distribution", "tab:red"),
-            (vanilla_mapped_samples, "Mapped with vanilla Dykstra", "tab:green"),
-            (fast_mapped_samples, "Mapped with fast-forward Dykstra", "tab:purple"),
+            (normal_samples, panel_titles[0], "tab:blue"),
+            (synthetic_samples, panel_titles[1], "tab:red"),
+            (vanilla_mapped_samples, panel_titles[2], "tab:green"),
+            (fast_mapped_samples, panel_titles[3], "tab:purple"),
         ]
 
         for ax, (samples, title, color) in zip(axes.flatten(), panels):
@@ -357,6 +374,8 @@ class DistributionPlotter(_BasePlotter):
         seed: int,
         m: int,
         shear_label: str | None = None,
+        reference_title: str | None = None,
+        sheared_title: str | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
         filename: str | None = None,
@@ -365,22 +384,27 @@ class DistributionPlotter(_BasePlotter):
         """Plot and save standard-normal and sheared sample distributions."""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-        sheared_title = "Sheared distribution"
+        effective_reference_title = reference_title or r"Standard normal $\mathcal{N}(0, I_2)$"
+        effective_sheared_title = sheared_title or "Sheared distribution"
         filename_label = ""
-        if shear_label is not None and shear_label.strip() != "":
+        if (
+            sheared_title is None
+            and shear_label is not None
+            and shear_label.strip() != ""
+        ):
             cleaned_label = shear_label.strip()
-            sheared_title = f"Sheared distribution ({cleaned_label})"
+            effective_sheared_title = f"Sheared distribution ({cleaned_label})"
             filename_label = f"_SHEAR={cleaned_label}"
 
         self._draw_distribution_panel(
             ax=ax1, samples=reference_samples,
-            title=r"Standard normal $\mathcal{N}(0, I_2)$",
+            title=effective_reference_title,
             xlabel="$z_1$", ylabel="$z_2$", color="blue",
             xlim=xlim, ylim=ylim,
         )
         self._draw_distribution_panel(
             ax=ax2, samples=sheared_samples,
-            title=sheared_title,
+            title=effective_sheared_title,
             xlabel="$x_1$", ylabel="$x_2$", color="red",
             xlim=xlim, ylim=ylim,
         )

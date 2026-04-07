@@ -66,6 +66,8 @@ def test_dataset_parser_and_distribution_plot_2d_subsample() -> None:
         seed=seed,
         m=num_particles,
         shear_label="LorenzPriorPosterior",
+        reference_title="Posterior (Reference) Distribution",
+        sheared_title="Prior (Sheared) Distribution",
         xlim=distribution_xlim,
         ylim=distribution_ylim,
         filename=filename,
