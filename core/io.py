@@ -267,12 +267,13 @@ def build_distribution_filename(
     prefix: str,
     seed: int,
     num_particles: int,
+    degree: int,
     optimization_config: OptimizationConfig,
 ) -> str:
     """Build a distribution plot filename from explicit metadata."""
     return (
         f"{prefix}"
-        f"SEED={seed}_M={num_particles}_SGD={optimization_config.batch_size}_"
+        f"SEED={seed}_M={num_particles}_D={degree}_SGD={optimization_config.batch_size}_"
         f"PGDITERS={optimization_config.max_outer_iter:,}_"
         f"DYKSTRA_ITERS={optimization_config.base_inner_iter}_"
         f"{optimization_config.max_inner_iters}_L1={optimization_config.l1_reg}_"
@@ -291,6 +292,7 @@ def plot_distribution_for_mode(
     num_dimensions: int,
     seed: int,
     num_particles: int,
+    degree: int,
     optimization_config: OptimizationConfig,
     x_lim: tuple[float, float] | None,
     y_lim: tuple[float, float] | None,
@@ -326,6 +328,7 @@ def plot_distribution_for_mode(
                 prefix=f"kr{num_dimensions}d_distribution_comparison_",
                 seed=seed,
                 num_particles=num_particles,
+                degree=degree,
                 optimization_config=optimization_config,
             ),
             show=False,
@@ -350,6 +353,7 @@ def plot_distribution_for_mode(
                 prefix=f"kr{num_dimensions}d_distribution_vanilla_",
                 seed=seed,
                 num_particles=num_particles,
+                degree=degree,
                 optimization_config=optimization_config,
             ),
             show=False,
@@ -373,6 +377,7 @@ def plot_distribution_for_mode(
             prefix=f"kr{num_dimensions}d_distribution_fast_",
             seed=seed,
             num_particles=num_particles,
+            degree=degree,
             optimization_config=optimization_config,
         ),
         show=False,

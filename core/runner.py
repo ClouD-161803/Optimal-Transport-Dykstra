@@ -382,6 +382,7 @@ class ExperimentRunner:
                 num_dimensions=self.config.num_dimensions,
                 seed=self.config.seed,
                 num_particles=self.config.num_particles,
+                degree=int(self.kr_map.degree),
                 optimization_config=self.config.optimization,
                 x_lim=self.config.plot.x_lim,
                 y_lim=self.config.plot.y_lim,

@@ -62,13 +62,13 @@ SEED: int = 42
 
 # Dataset dimensions/particles available in current CSVs: 3 dimensions, 500 particles.
 NUM_DIMENSIONS: int = 3
-NUM_PARTICLES: int = 20
+NUM_PARTICLES: int = 100
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 10
+MAX_OUTER_ITER: int = 1000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
-L1_REG: float = 0.0
+L1_REG: float = 0.5
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
 BASE_INNER_ITER: int = 10
@@ -78,7 +78,7 @@ INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OU
 # SGD
 BATCH_SIZE: int | None = None
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.075
+LEARNING_RATE: float = 0.01
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -95,7 +95,7 @@ DATASET_DIR = os.path.join(
 PRIOR_CSV_PATH = os.path.join(DATASET_DIR, "prior.csv")
 POSTERIOR_CSV_PATH = os.path.join(DATASET_DIR, "posterior.csv")
 
-DEGREE: int = 2
+DEGREE: int = 5
 BASIS: Basis = HermiteBasis()
 KR_MAP: KRMap = KRMap(
     degree=DEGREE,
