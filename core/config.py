@@ -24,6 +24,9 @@ class PlotConfig:
     plot_distributions: bool = True
     x_lim: tuple[float, float] | None = None
     y_lim: tuple[float, float] | None = None
+    distribution_panel_titles_both: tuple[str, str, str, str] | None = None
+    distribution_panel_titles_vanilla: tuple[str, str, str] | None = None
+    distribution_panel_titles_fast: tuple[str, str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -55,4 +58,3 @@ class ExperimentConfig:
     run: RunConfig
     plot: PlotConfig
     optimization: OptimizationConfig
-

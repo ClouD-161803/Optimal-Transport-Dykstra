@@ -385,6 +385,9 @@ class ExperimentRunner:
                 optimization_config=self.config.optimization,
                 x_lim=self.config.plot.x_lim,
                 y_lim=self.config.plot.y_lim,
+                panel_titles_both=self.config.plot.distribution_panel_titles_both,
+                panel_titles_vanilla=self.config.plot.distribution_panel_titles_vanilla,
+                panel_titles_fast=self.config.plot.distribution_panel_titles_fast,
             )
 
         print(

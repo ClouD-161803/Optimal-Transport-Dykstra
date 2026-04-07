@@ -294,6 +294,9 @@ def plot_distribution_for_mode(
     optimization_config: OptimizationConfig,
     x_lim: tuple[float, float] | None,
     y_lim: tuple[float, float] | None,
+    panel_titles_both: tuple[str, str, str, str] | None = None,
+    panel_titles_vanilla: tuple[str, str, str] | None = None,
+    panel_titles_fast: tuple[str, str, str] | None = None,
 ) -> None:
     """Plot mapped distributions for the selected solver mode."""
     distribution_plotter = DistributionPlotter(output_dir=output_dir)
@@ -316,6 +319,7 @@ def plot_distribution_for_mode(
             synthetic_samples=z_samples[:, :2],
             vanilla_mapped_samples=vanilla_mapped[:, :2],
             fast_mapped_samples=fast_mapped[:, :2],
+            panel_titles=panel_titles_both,
             xlim=x_lim,
             ylim=y_lim,
             filename=build_distribution_filename(
@@ -339,6 +343,7 @@ def plot_distribution_for_mode(
             synthetic_samples=z_samples[:, :2],
             mapped_samples=vanilla_mapped[:, :2],
             solver_label="vanilla Dykstra",
+            panel_titles=panel_titles_vanilla,
             xlim=x_lim,
             ylim=y_lim,
             filename=build_distribution_filename(
@@ -361,6 +366,7 @@ def plot_distribution_for_mode(
         synthetic_samples=z_samples[:, :2],
         mapped_samples=fast_mapped[:, :2],
         solver_label="fast-forward Dykstra",
+        panel_titles=panel_titles_fast,
         xlim=x_lim,
         ylim=y_lim,
         filename=build_distribution_filename(
