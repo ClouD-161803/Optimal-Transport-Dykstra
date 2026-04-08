@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, cast
 
 import numpy as np
 
@@ -20,6 +20,22 @@ from core.io import (
 from utils.optimal_transport import KRMap
 from utils.pgd_solver import ProjectedGradientDescent
 from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
+
+
+def _coerce_inverse_transform(
+    maybe_transform: Any,
+) -> Callable[[np.ndarray], np.ndarray] | None:
+    """Return a typed ndarray->ndarray transform or ``None``."""
+    if not callable(maybe_transform):
+        return None
+
+    raw_transform = cast(Callable[[np.ndarray], Any], maybe_transform)
+
+    def _typed_transform(samples: np.ndarray) -> np.ndarray:
+        transformed = raw_transform(samples)
+        return np.asarray(transformed, dtype=float)
+
+    return _typed_transform
 
 
 @dataclass(frozen=True)
@@ -372,6 +388,15 @@ class ExperimentRunner:
             )
 
         if self.config.plot.plot_distributions:
+            plotted_reference_samples = batch.metadata.get("plotted_reference_samples")
+            plotted_target_samples = batch.metadata.get("plotted_target_samples")
+            eval_target_samples = batch.metadata.get("eval_target_samples")
+            mapped_output_inverse_transform = batch.metadata.get(
+                "mapped_output_inverse_transform"
+            )
+            mapped_inverse_transform = _coerce_inverse_transform(
+                mapped_output_inverse_transform
+            )
             plot_distribution_for_mode(
                 solver_mode=self.config.run.run_solver_mode,
                 output_dir=self._resolve_results_dir("full_experiment_benchmarks"),
@@ -389,6 +414,24 @@ class ExperimentRunner:
                 panel_titles_both=self.config.plot.distribution_panel_titles_both,
                 panel_titles_vanilla=self.config.plot.distribution_panel_titles_vanilla,
                 panel_titles_fast=self.config.plot.distribution_panel_titles_fast,
+                plotted_reference_samples=(
+                    np.asarray(plotted_reference_samples, dtype=float)
+                    if plotted_reference_samples is not None
+                    else None
+                ),
+                plotted_target_samples=(
+                    np.asarray(plotted_target_samples, dtype=float)
+                    if plotted_target_samples is not None
+                    else None
+                ),
+                eval_target_samples=(
+                    np.asarray(eval_target_samples, dtype=float)
+                    if eval_target_samples is not None
+                    else None
+                ),
+                mapped_output_inverse_transform=(
+                    mapped_inverse_transform
+                ),
             )
 
         print(

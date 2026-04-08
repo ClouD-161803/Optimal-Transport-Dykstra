@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -299,26 +299,48 @@ def plot_distribution_for_mode(
     panel_titles_both: tuple[str, str, str, str] | None = None,
     panel_titles_vanilla: tuple[str, str, str] | None = None,
     panel_titles_fast: tuple[str, str, str] | None = None,
+    plotted_reference_samples: np.ndarray | None = None,
+    plotted_target_samples: np.ndarray | None = None,
+    eval_target_samples: np.ndarray | None = None,
+    mapped_output_inverse_transform: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> None:
     """Plot mapped distributions for the selected solver mode."""
     distribution_plotter = DistributionPlotter(output_dir=output_dir)
+    reference_for_plot = (
+        np.asarray(plotted_reference_samples)
+        if plotted_reference_samples is not None
+        else normal_samples
+    )
+    target_for_plot = (
+        np.asarray(plotted_target_samples)
+        if plotted_target_samples is not None
+        else z_samples
+    )
+    target_for_eval = (
+        np.asarray(eval_target_samples)
+        if eval_target_samples is not None
+        else z_samples
+    )
 
     if solver_mode == "both":
         vanilla_weights = kr_map.assemble_component_weights(results, "w_vanilla")
         fast_weights = kr_map.assemble_component_weights(results, "w_fast")
 
         vanilla_mapped = kr_map.evaluate(
-            z=z_samples[:, :num_dimensions],
+            z=target_for_eval[:, :num_dimensions],
             weights_by_component=vanilla_weights,
         )
         fast_mapped = kr_map.evaluate(
-            z=z_samples[:, :num_dimensions],
+            z=target_for_eval[:, :num_dimensions],
             weights_by_component=fast_weights,
         )
+        if mapped_output_inverse_transform is not None:
+            vanilla_mapped = mapped_output_inverse_transform(vanilla_mapped)
+            fast_mapped = mapped_output_inverse_transform(fast_mapped)
 
         distribution_plotter.plot_kr_map_distribution_comparison(
-            normal_samples=normal_samples[:, :2],
-            synthetic_samples=z_samples[:, :2],
+            normal_samples=reference_for_plot[:, :2],
+            synthetic_samples=target_for_plot[:, :2],
             vanilla_mapped_samples=vanilla_mapped[:, :2],
             fast_mapped_samples=fast_mapped[:, :2],
             panel_titles=panel_titles_both,
@@ -338,12 +360,14 @@ def plot_distribution_for_mode(
     if solver_mode == "vanilla":
         vanilla_weights = kr_map.assemble_component_weights(results, "w_vanilla")
         vanilla_mapped = kr_map.evaluate(
-            z=z_samples[:, :num_dimensions],
+            z=target_for_eval[:, :num_dimensions],
             weights_by_component=vanilla_weights,
         )
+        if mapped_output_inverse_transform is not None:
+            vanilla_mapped = mapped_output_inverse_transform(vanilla_mapped)
         distribution_plotter.plot_kr_map_distribution_single_solver(
-            normal_samples=normal_samples[:, :2],
-            synthetic_samples=z_samples[:, :2],
+            normal_samples=reference_for_plot[:, :2],
+            synthetic_samples=target_for_plot[:, :2],
             mapped_samples=vanilla_mapped[:, :2],
             solver_label="vanilla Dykstra",
             panel_titles=panel_titles_vanilla,
@@ -362,12 +386,14 @@ def plot_distribution_for_mode(
 
     fast_weights = kr_map.assemble_component_weights(results, "w_fast")
     fast_mapped = kr_map.evaluate(
-        z=z_samples[:, :num_dimensions],
+        z=target_for_eval[:, :num_dimensions],
         weights_by_component=fast_weights,
     )
+    if mapped_output_inverse_transform is not None:
+        fast_mapped = mapped_output_inverse_transform(fast_mapped)
     distribution_plotter.plot_kr_map_distribution_single_solver(
-        normal_samples=normal_samples[:, :2],
-        synthetic_samples=z_samples[:, :2],
+        normal_samples=reference_for_plot[:, :2],
+        synthetic_samples=target_for_plot[:, :2],
         mapped_samples=fast_mapped[:, :2],
         solver_label="fast-forward Dykstra",
         panel_titles=panel_titles_fast,

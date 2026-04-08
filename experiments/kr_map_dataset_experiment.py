@@ -15,7 +15,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.config import ExperimentConfig, OptimizationConfig, PlotConfig, RunConfig, SolverMode
-from core.data import DatasetDataSource
+from core.data import DataBatch, DataSource, DatasetDataSource
 from core.runner import (
     ExperimentRunner,
     build_identity_initial_guesses,
@@ -28,7 +28,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
-SAVE_FULL_RUN_ITERATES: bool = False
+SAVE_FULL_RUN_ITERATES: bool = True
 ENFORCE_MATCHING: bool = False
 
 # Plot settings
@@ -41,19 +41,19 @@ PLOT_SIZE: float = 30.0 if PLOT_DISTRIBUTIONS else 0.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 PANEL_TITLES_BOTH: tuple[str, str, str, str] | None = (
-    "Posterior (Reference) Distribution",
-    "Prior (Sheared) Distribution",
+    "Posterior Distribution",
+    "Prior Distribution",
     "Mapped Prior (Vanilla Dykstra)",
     "Mapped Prior (Fast-Forward Dykstra)",
 ) if PLOT_DISTRIBUTIONS else None
 PANEL_TITLES_VANILLA: tuple[str, str, str] | None = (
-    "Posterior (Reference) Distribution",
-    "Prior (Sheared) Distribution",
+    "Posterior Distribution",
+    "Prior Distribution",
     "Mapped Prior (Vanilla Dykstra)",
 ) if PLOT_DISTRIBUTIONS else None
 PANEL_TITLES_FAST: tuple[str, str, str] | None = (
-    "Posterior (Reference) Distribution",
-    "Prior (Sheared) Distribution",
+    "Posterior Distribution",
+    "Prior Distribution",
     "Mapped Prior (Fast-Forward Dykstra)",
 ) if PLOT_DISTRIBUTIONS else None
 
@@ -62,23 +62,23 @@ SEED: int = 42
 
 # Dataset dimensions/particles available in current CSVs: 3 dimensions, 500 particles.
 NUM_DIMENSIONS: int = 3
-NUM_PARTICLES: int = 100
+NUM_PARTICLES: int = 20
 
 # Optimisation settings
 MAX_OUTER_ITER: int = 1000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
-L1_REG: float = 0.5
+L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
 BASE_INNER_ITER: int = 10
-MAX_INNER_ITERS: int = 100
+MAX_INNER_ITERS: int = 10
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
 BATCH_SIZE: int | None = None
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.01
+LEARNING_RATE: float = 0.1
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -95,7 +95,7 @@ DATASET_DIR = os.path.join(
 PRIOR_CSV_PATH = os.path.join(DATASET_DIR, "prior.csv")
 POSTERIOR_CSV_PATH = os.path.join(DATASET_DIR, "posterior.csv")
 
-DEGREE: int = 5
+DEGREE: int = 2
 BASIS: Basis = HermiteBasis()
 KR_MAP: KRMap = KRMap(
     degree=DEGREE,
@@ -106,6 +106,118 @@ W_INIT: dict[int, np.ndarray] = build_identity_initial_guesses(
     kr_map=KR_MAP,
     num_dimensions=NUM_DIMENSIONS,
 )
+
+
+def _compute_whitener(
+    samples: np.ndarray,
+    regularization: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (mean, whitening_matrix, inverse_whitening_matrix)."""
+    centered = np.asarray(samples, dtype=float)
+    mean = centered.mean(axis=0)
+    centered = centered - mean
+
+    covariance = np.cov(centered, rowvar=False)
+    if covariance.ndim == 0:
+        covariance = np.asarray([[float(covariance)]], dtype=float)
+    covariance = covariance + regularization * np.eye(covariance.shape[0], dtype=float)
+
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    safe_eigenvalues = np.maximum(eigenvalues, regularization)
+    inv_sqrt_diag = np.diag(1.0 / np.sqrt(safe_eigenvalues))
+    sqrt_diag = np.diag(np.sqrt(safe_eigenvalues))
+
+    whitening = eigenvectors @ inv_sqrt_diag @ eigenvectors.T
+    inverse_whitening = eigenvectors @ sqrt_diag @ eigenvectors.T
+    return mean, whitening, inverse_whitening
+
+
+def _apply_affine_whitening(
+    samples: np.ndarray,
+    mean: np.ndarray,
+    whitening: np.ndarray,
+) -> np.ndarray:
+    centered = np.asarray(samples, dtype=float) - mean
+    return centered @ whitening.T
+
+
+def _apply_affine_inverse(
+    samples: np.ndarray,
+    mean: np.ndarray,
+    inverse_whitening: np.ndarray,
+) -> np.ndarray:
+    return np.asarray(samples, dtype=float) @ inverse_whitening.T + mean
+
+
+class WhitenedDatasetDataSource(DataSource):
+    """Dataset wrapper that whitens samples for fitting and restores physical plotting."""
+
+    def __init__(
+        self,
+        base_source: DatasetDataSource,
+        regularization: float = 1e-6,
+    ) -> None:
+        self.base_source = base_source
+        self.regularization = regularization
+
+    def load(
+        self,
+        num_particles: int,
+        num_dimensions: int,
+        seed: int | None = None,
+    ) -> DataBatch:
+        base_batch = self.base_source.load(
+            num_particles=num_particles,
+            num_dimensions=num_dimensions,
+            seed=seed,
+        )
+
+        posterior_physical = np.asarray(base_batch.reference_samples, dtype=float)
+        prior_physical = np.asarray(base_batch.target_samples, dtype=float)
+
+        prior_mean, prior_whitener, _ = _compute_whitener(
+            prior_physical,
+            regularization=self.regularization,
+        )
+        posterior_mean, posterior_whitener, posterior_unwhitener = _compute_whitener(
+            posterior_physical,
+            regularization=self.regularization,
+        )
+
+        prior_whitened = _apply_affine_whitening(
+            prior_physical,
+            mean=prior_mean,
+            whitening=prior_whitener,
+        )
+        posterior_whitened = _apply_affine_whitening(
+            posterior_physical,
+            mean=posterior_mean,
+            whitening=posterior_whitener,
+        )
+
+        def _mapped_output_inverse_transform(mapped_whitened: np.ndarray) -> np.ndarray:
+            return _apply_affine_inverse(
+                mapped_whitened,
+                mean=posterior_mean,
+                inverse_whitening=posterior_unwhitener,
+            )
+
+        metadata = dict(base_batch.metadata)
+        metadata.update(
+            {
+                "preconditioning": "full_whitening_prior_and_posterior",
+                "plotted_reference_samples": posterior_physical,
+                "plotted_target_samples": prior_physical,
+                "eval_target_samples": prior_whitened,
+                "mapped_output_inverse_transform": _mapped_output_inverse_transform,
+            }
+        )
+
+        return DataBatch(
+            reference_samples=posterior_whitened,
+            target_samples=prior_whitened,
+            metadata=metadata,
+        )
 
 
 def _build_experiment_config() -> ExperimentConfig:
@@ -221,10 +333,11 @@ def benchmark_kr_map_components_nd(
 def run_benchmark() -> list[dict[str, Any]]:
     """Run the KR benchmark on dataset particles using module-level configuration."""
     config = _build_experiment_config()
-    data_source = DatasetDataSource(
+    base_data_source = DatasetDataSource(
         prior_csv_path=PRIOR_CSV_PATH,
         posterior_csv_path=POSTERIOR_CSV_PATH,
     )
+    data_source = WhitenedDatasetDataSource(base_source=base_data_source)
     runner = ExperimentRunner(
         project_root=PROJECT_ROOT,
         config=config,
