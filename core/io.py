@@ -13,6 +13,11 @@ from core.config import OptimizationConfig, SolverMode
 from utils.optimal_transport import KRMap
 from utils.plotter import DistributionPlotter, DykstraPlotter
 
+NPZ_REFERENCE_PLOT_SAMPLES_KEY = "run_reference_samples_plot"
+NPZ_TARGET_PLOT_SAMPLES_KEY = "run_target_samples_plot"
+NPZ_TARGET_EVAL_SAMPLES_KEY = "run_target_samples_eval"
+NPZ_INITIAL_MAPPED_SAMPLES_VIDEO_KEY = "run_initial_mapped_samples_video"
+
 
 def to_json_safe(value: Any) -> Any:
     """Convert NumPy/Python containers into JSON-safe objects."""
@@ -44,6 +49,10 @@ def save_full_run_iterates_npz(
     base_inner_iter: int,
     max_inner_iters: int,
     solver_mode: str,
+    reference_samples_for_plot: np.ndarray | None = None,
+    target_samples_for_plot: np.ndarray | None = None,
+    target_samples_for_eval: np.ndarray | None = None,
+    initial_mapped_samples_for_video: np.ndarray | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Write full solver trajectories to compressed NPZ and return index metadata."""
     os.makedirs(output_dir, exist_ok=True)
@@ -57,6 +66,27 @@ def save_full_run_iterates_npz(
 
     arrays_to_save: dict[str, np.ndarray] = {}
     component_index: list[dict[str, Any]] = []
+
+    if reference_samples_for_plot is not None:
+        arrays_to_save[NPZ_REFERENCE_PLOT_SAMPLES_KEY] = np.asarray(
+            reference_samples_for_plot,
+            dtype=float,
+        )
+    if target_samples_for_plot is not None:
+        arrays_to_save[NPZ_TARGET_PLOT_SAMPLES_KEY] = np.asarray(
+            target_samples_for_plot,
+            dtype=float,
+        )
+    if target_samples_for_eval is not None:
+        arrays_to_save[NPZ_TARGET_EVAL_SAMPLES_KEY] = np.asarray(
+            target_samples_for_eval,
+            dtype=float,
+        )
+    if initial_mapped_samples_for_video is not None:
+        arrays_to_save[NPZ_INITIAL_MAPPED_SAMPLES_VIDEO_KEY] = np.asarray(
+            initial_mapped_samples_for_video,
+            dtype=float,
+        )
 
     for component_result in results:
         component_dim = int(component_result["component_dim"])
@@ -80,11 +110,15 @@ def save_full_run_iterates_npz(
             arrays_to_save[f"{prefix}_dykstra_inner_iters"] = np.asarray(
                 history.get("dykstra_inner_iters", []), dtype=int
             )
+            arrays_to_save[f"{prefix}_weight_iterates"] = np.asarray(
+                history.get("weight_iterates", []), dtype=float
+            )
 
             solver_meta: dict[str, Any] = {
                 "weights_key": f"{prefix}_weights",
                 "objective_value_key": f"{prefix}_objective_value",
                 "dykstra_inner_iters_key": f"{prefix}_dykstra_inner_iters",
+                "weight_iterates_key": f"{prefix}_weight_iterates",
             }
 
             for proj_key in ("projection_results", "projection_results_full"):
@@ -166,6 +200,10 @@ def save_full_run_iterates_json(
     dykstra_kwargs: dict[str, Any],
     npz_path: str,
     npz_component_index: list[dict[str, Any]],
+    npz_reference_plot_samples_key: str | None = NPZ_REFERENCE_PLOT_SAMPLES_KEY,
+    npz_target_plot_samples_key: str | None = NPZ_TARGET_PLOT_SAMPLES_KEY,
+    npz_target_eval_samples_key: str | None = NPZ_TARGET_EVAL_SAMPLES_KEY,
+    npz_initial_mapped_samples_video_key: str | None = NPZ_INITIAL_MAPPED_SAMPLES_VIDEO_KEY,
 ) -> str:
     """Write lightweight JSON metadata and pointers to NPZ trajectory arrays."""
     os.makedirs(output_dir, exist_ok=True)
@@ -200,6 +238,12 @@ def save_full_run_iterates_json(
                 "format": "npz",
                 "compression": "zip",
                 "allow_pickle_required": True,
+            },
+            "npz_data_keys": {
+                "reference_samples_plot": npz_reference_plot_samples_key,
+                "target_samples_plot": npz_target_plot_samples_key,
+                "target_samples_eval": npz_target_eval_samples_key,
+                "initial_mapped_samples_video": npz_initial_mapped_samples_video_key,
             },
             "notes": {
                 "json_payload": (
@@ -237,6 +281,271 @@ def save_full_run_iterates_json(
         json.dump(payload, handle, indent=2)
 
     return output_path
+
+
+def _resolve_npz_path_from_json_payload(
+    payload: dict[str, Any],
+    json_path: str,
+) -> str:
+    metadata = payload.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise ValueError("JSON payload is missing valid 'metadata'.")
+
+    npz_pointer = metadata.get("npz_pointer", {})
+    if not isinstance(npz_pointer, dict):
+        raise ValueError("JSON payload is missing valid 'npz_pointer' metadata.")
+
+    absolute_path = npz_pointer.get("absolute_path")
+    if isinstance(absolute_path, str) and absolute_path.strip() != "":
+        return absolute_path
+
+    relative_path = npz_pointer.get("relative_to_json_dir")
+    if isinstance(relative_path, str) and relative_path.strip() != "":
+        return os.path.abspath(os.path.join(os.path.dirname(json_path), relative_path))
+
+    raise ValueError("Could not resolve NPZ path from full-run JSON metadata.")
+
+
+def _resolve_single_solver_titles(
+    solver_label: str,
+    panel_titles_both: tuple[str, str, str, str] | None,
+    panel_titles_vanilla: tuple[str, str, str] | None,
+    panel_titles_fast: tuple[str, str, str] | None,
+) -> tuple[str, str, str] | None:
+    if solver_label == "vanilla":
+        if panel_titles_vanilla is not None:
+            return panel_titles_vanilla
+        if panel_titles_both is not None:
+            return panel_titles_both[0], panel_titles_both[1], panel_titles_both[2]
+        return None
+
+    if panel_titles_fast is not None:
+        return panel_titles_fast
+    if panel_titles_both is not None:
+        return panel_titles_both[0], panel_titles_both[1], panel_titles_both[3]
+    return None
+
+
+def _build_distribution_shift_filename_prefix(
+    metadata: dict[str, Any],
+    solver_label: str,
+) -> str:
+    num_dimensions = metadata.get("num_dimensions", "NA")
+    seed = metadata.get("seed", "NA")
+    num_particles = metadata.get("num_particles", "NA")
+    max_outer_iter = metadata.get("max_outer_iter", "NA")
+    return (
+        f"kr{num_dimensions}d_distribution_shift_{solver_label}_"
+        f"SEED={seed}_M={num_particles}_PGDITERS={max_outer_iter}"
+    )
+
+
+def save_distribution_shift_media_from_artifacts(
+    full_run_json_path: str,
+    output_dir: str,
+    kr_map: KRMap,
+    solver_mode: SolverMode,
+    num_dimensions: int,
+    x_lim: tuple[float, float] | None = None,
+    y_lim: tuple[float, float] | None = None,
+    panel_titles_both: tuple[str, str, str, str] | None = None,
+    panel_titles_vanilla: tuple[str, str, str] | None = None,
+    panel_titles_fast: tuple[str, str, str] | None = None,
+    mapped_output_inverse_transform: Callable[[np.ndarray], np.ndarray] | None = None,
+    fps: int = 12,
+    save_mp4: bool = True,
+    save_gif: bool = True,
+) -> dict[str, dict[str, str]]:
+    """Build and save per-outer-iteration distribution-shift animations."""
+    with open(full_run_json_path, "r", encoding="utf-8") as handle:
+        payload: dict[str, Any] = json.load(handle)
+
+    metadata = payload.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise ValueError("Full-run JSON must contain a 'metadata' object.")
+
+    npz_path = _resolve_npz_path_from_json_payload(payload=payload, json_path=full_run_json_path)
+    npz_component_index = payload.get("npz_component_index")
+    if not isinstance(npz_component_index, list):
+        raise ValueError("Full-run JSON must contain 'npz_component_index' list.")
+
+    npz_data_keys = metadata.get("npz_data_keys", {})
+    if not isinstance(npz_data_keys, dict):
+        npz_data_keys = {}
+    reference_key = str(
+        npz_data_keys.get("reference_samples_plot", NPZ_REFERENCE_PLOT_SAMPLES_KEY)
+    )
+    target_plot_key = str(
+        npz_data_keys.get("target_samples_plot", NPZ_TARGET_PLOT_SAMPLES_KEY)
+    )
+    target_eval_key = str(
+        npz_data_keys.get("target_samples_eval", NPZ_TARGET_EVAL_SAMPLES_KEY)
+    )
+    initial_mapped_video_key_raw = npz_data_keys.get("initial_mapped_samples_video")
+    initial_mapped_video_key = (
+        str(initial_mapped_video_key_raw)
+        if isinstance(initial_mapped_video_key_raw, str)
+        else None
+    )
+
+    os.makedirs(output_dir, exist_ok=True)
+    plotter = DistributionPlotter(output_dir=output_dir)
+
+    media_paths: dict[str, dict[str, str]] = {}
+    solver_labels = (
+        ("vanilla", "fast")
+        if solver_mode == "both"
+        else (solver_mode,)
+    )
+
+    with np.load(npz_path, allow_pickle=True) as npz_data:
+        if (
+            reference_key not in npz_data
+            or target_plot_key not in npz_data
+            or target_eval_key not in npz_data
+        ):
+            raise KeyError(
+                "Missing plotting/evaluation sample arrays in NPZ artifact. "
+                "Expected keys: "
+                f"{reference_key}, {target_plot_key}, {target_eval_key}."
+            )
+
+        reference_for_plot = np.asarray(npz_data[reference_key], dtype=float)
+        target_for_plot = np.asarray(npz_data[target_plot_key], dtype=float)
+        target_for_eval = np.asarray(npz_data[target_eval_key], dtype=float)
+        initial_mapped_video_samples: np.ndarray | None = None
+        if (
+            initial_mapped_video_key is not None
+            and initial_mapped_video_key in npz_data
+        ):
+            initial_mapped_video_samples = np.asarray(
+                npz_data[initial_mapped_video_key],
+                dtype=float,
+            )
+
+        for solver_label in solver_labels:
+            weight_iterates_by_component: dict[int, np.ndarray] = {}
+            for component_meta in npz_component_index:
+                if not isinstance(component_meta, dict):
+                    continue
+                component_dim_raw = component_meta.get("component_dim")
+                if not isinstance(component_dim_raw, (int, np.integer)):
+                    continue
+                component_dim = int(component_dim_raw)
+                solvers_meta = component_meta.get("solvers", {})
+                if not isinstance(solvers_meta, dict):
+                    continue
+                solver_meta = solvers_meta.get(solver_label)
+                if not isinstance(solver_meta, dict):
+                    continue
+                weight_iterates_key = solver_meta.get("weight_iterates_key")
+                if not isinstance(weight_iterates_key, str):
+                    raise KeyError(
+                        f"Missing weight_iterates_key for component {component_dim} "
+                        f"solver '{solver_label}'."
+                    )
+                if weight_iterates_key not in npz_data:
+                    raise KeyError(
+                        f"NPZ key '{weight_iterates_key}' was not found for "
+                        f"component {component_dim} solver '{solver_label}'."
+                    )
+
+                weight_iterates = np.asarray(npz_data[weight_iterates_key], dtype=float)
+                if weight_iterates.ndim != 2:
+                    raise ValueError(
+                        f"Weight iterates for component {component_dim} solver "
+                        f"'{solver_label}' must have shape (num_frames, n_coeffs)."
+                    )
+                weight_iterates_by_component[component_dim] = weight_iterates
+
+            expected_dims = list(range(1, num_dimensions + 1))
+            missing_dims = [dim for dim in expected_dims if dim not in weight_iterates_by_component]
+            if missing_dims:
+                raise KeyError(
+                    f"Missing weight-iterate histories for solver '{solver_label}' "
+                    f"component dimensions: {missing_dims}."
+                )
+
+            num_frames = min(
+                int(weight_iterates_by_component[dim].shape[0])
+                for dim in expected_dims
+            )
+            if num_frames < 1:
+                raise ValueError(
+                    f"Solver '{solver_label}' has no stored weight iterates to animate."
+                )
+
+            mapped_sequence: list[np.ndarray] = []
+            outer_indices = [frame_idx - 1 for frame_idx in range(num_frames)]
+            for frame_idx in range(num_frames):
+                per_component_results = [
+                    {
+                        "component_dim": dim,
+                        f"w_{solver_label}": weight_iterates_by_component[dim][frame_idx],
+                    }
+                    for dim in expected_dims
+                ]
+                assembled_weights = kr_map.assemble_component_weights(
+                    per_component_results,
+                    f"w_{solver_label}",
+                )
+                mapped = kr_map.evaluate(
+                    z=target_for_eval[:, :num_dimensions],
+                    weights_by_component=assembled_weights,
+                )
+                if mapped_output_inverse_transform is not None:
+                    mapped = mapped_output_inverse_transform(mapped)
+                mapped_sequence.append(np.asarray(mapped[:, :2], dtype=float))
+
+            if (
+                initial_mapped_video_samples is not None
+                and len(mapped_sequence) > 0
+                and initial_mapped_video_samples.ndim == 2
+                and initial_mapped_video_samples.shape[1] >= 2
+                and initial_mapped_video_samples.shape[0] == mapped_sequence[0].shape[0]
+            ):
+                initial_xy = np.asarray(
+                    initial_mapped_video_samples[:, :2],
+                    dtype=float,
+                )
+                if len(mapped_sequence) == 1:
+                    mapped_sequence[0] = initial_xy
+                else:
+                    final_frame_index = float(len(mapped_sequence) - 1)
+                    for frame_idx in range(len(mapped_sequence)):
+                        alpha = float(frame_idx) / final_frame_index
+                        mapped_sequence[frame_idx] = (
+                            (1.0 - alpha) * initial_xy
+                            + alpha * np.asarray(mapped_sequence[frame_idx], dtype=float)
+                        )
+
+            solver_title_label = (
+                "vanilla Dykstra" if solver_label == "vanilla" else "fast-forward Dykstra"
+            )
+            media_paths[solver_label] = plotter.save_kr_map_distribution_shift_animation(
+                normal_samples=reference_for_plot[:, :2],
+                synthetic_samples=target_for_plot[:, :2],
+                mapped_samples_sequence=np.asarray(mapped_sequence, dtype=float),
+                solver_label=solver_title_label,
+                outer_indices=outer_indices,
+                panel_titles=_resolve_single_solver_titles(
+                    solver_label=solver_label,
+                    panel_titles_both=panel_titles_both,
+                    panel_titles_vanilla=panel_titles_vanilla,
+                    panel_titles_fast=panel_titles_fast,
+                ),
+                xlim=x_lim,
+                ylim=y_lim,
+                filename_prefix=_build_distribution_shift_filename_prefix(
+                    metadata=metadata,
+                    solver_label=solver_label,
+                ),
+                fps=fps,
+                save_mp4=save_mp4,
+                save_gif=save_gif,
+            )
+
+    return media_paths
 
 
 def plot_component_solver_comparison(

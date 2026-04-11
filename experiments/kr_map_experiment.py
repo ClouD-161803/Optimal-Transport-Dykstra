@@ -34,6 +34,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
 SAVE_FULL_RUN_ITERATES: bool = False
+SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
 ENFORCE_MATCHING: bool = False
 
 # Plot settings
@@ -47,12 +48,12 @@ X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTION
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 123456
-NUM_DIMENSIONS: int = 6
-NUM_PARTICLES: int = 100
+SEED: int = 8989
+NUM_DIMENSIONS: int = 2
+NUM_PARTICLES: int = 1000
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 1
+MAX_OUTER_ITER: int = 1000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
@@ -63,7 +64,7 @@ MAX_INNER_ITERS: int = 10
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
-BATCH_SIZE: int | None = None
+BATCH_SIZE: int | None = 100
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
 LEARNING_RATE: float = 0.075
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
@@ -76,20 +77,22 @@ PRUNE_INTERVAL: int = 100
 GVM_ALPHA: float = -3.2
 GVM_BETA: np.ndarray = np.array([0.0, 0.0], dtype=float)
 GVM_GAMMA: np.ndarray = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
-GVM_KAPPA: float = 12.0
+GVM_KAPPA: float = 7.0
 LINE_SIGMA: float = 0.15
 
 # Distribution constraints
-DATA_HALFSPACE_A: np.ndarray = np.array([[0.0, 1.0]], dtype=float)
-DATA_HALFSPACE_B: np.ndarray = np.array([5.0], dtype=float)
+# DATA_HALFSPACE_A: np.ndarray = np.array([[0.0, 1.0]], dtype=float)
+# DATA_HALFSPACE_B: np.ndarray = np.array([5.0], dtype=float)
+DATA_HALFSPACE_A: np.ndarray | None = None
+DATA_HALFSPACE_B: np.ndarray | None = None
 
 DATA_GENERATOR = GVMDataGenerator(
     alpha=GVM_ALPHA,
     beta=GVM_BETA,
     gamma=GVM_GAMMA,
     kappa=GVM_KAPPA,
-    halfspace_A=DATA_HALFSPACE_A,
-    halfspace_b=DATA_HALFSPACE_B,
+    halfspace_A=DATA_HALFSPACE_A if "DATA_HALFSPACE_A" in globals() else None,
+    halfspace_b=DATA_HALFSPACE_B if "DATA_HALFSPACE_B" in globals() else None,
 )
 # DATA_GENERATOR = DataGenerator(
 #     shear_function=BoomerangShearFunction(),
@@ -119,7 +122,10 @@ def _build_experiment_config() -> ExperimentConfig:
 
     run_config = RunConfig(
         run_solver_mode=validated_run_solver_mode,
-        save_full_run_iterates=SAVE_FULL_RUN_ITERATES,
+        save_full_run_iterates=(
+            SAVE_FULL_RUN_ITERATES or SAVE_DISTRIBUTION_SHIFT_MEDIA
+        ),
+        save_distribution_shift_media=SAVE_DISTRIBUTION_SHIFT_MEDIA,
         enforce_matching=ENFORCE_MATCHING,
     )
     plot_config = PlotConfig(

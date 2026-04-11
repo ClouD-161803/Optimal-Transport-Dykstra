@@ -29,6 +29,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
 SAVE_FULL_RUN_ITERATES: bool = True
+SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
 ENFORCE_MATCHING: bool = False
 
 # Plot settings
@@ -58,11 +59,11 @@ PANEL_TITLES_FAST: tuple[str, str, str] | None = (
 ) if PLOT_DISTRIBUTIONS else None
 
 # Data downselection seed
-SEED: int = 42
+SEED: int = 69
 
 # Dataset dimensions/particles available in current CSVs: 3 dimensions, 500 particles.
 NUM_DIMENSIONS: int = 3
-NUM_PARTICLES: int = 20
+NUM_PARTICLES: int = 200
 
 # Optimisation settings
 MAX_OUTER_ITER: int = 1000
@@ -71,7 +72,7 @@ GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-BASE_INNER_ITER: int = 10
+BASE_INNER_ITER: int = 1
 MAX_INNER_ITERS: int = 10
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
@@ -210,6 +211,7 @@ class WhitenedDatasetDataSource(DataSource):
                 "plotted_target_samples": prior_physical,
                 "eval_target_samples": prior_whitened,
                 "mapped_output_inverse_transform": _mapped_output_inverse_transform,
+                "initial_mapped_samples_for_video": prior_physical,
             }
         )
 
@@ -228,7 +230,10 @@ def _build_experiment_config() -> ExperimentConfig:
 
     run_config = RunConfig(
         run_solver_mode=validated_run_solver_mode,
-        save_full_run_iterates=SAVE_FULL_RUN_ITERATES,
+        save_full_run_iterates=(
+            SAVE_FULL_RUN_ITERATES or SAVE_DISTRIBUTION_SHIFT_MEDIA
+        ),
+        save_distribution_shift_media=SAVE_DISTRIBUTION_SHIFT_MEDIA,
         enforce_matching=ENFORCE_MATCHING,
     )
     plot_config = PlotConfig(

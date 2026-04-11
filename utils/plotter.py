@@ -9,9 +9,10 @@ Provides dedicated plotter classes for disjoint plotting domains:
 from __future__ import annotations
 
 import os
-from typing import Sequence
+from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
+from matplotlib import animation
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
@@ -366,6 +367,171 @@ class DistributionPlotter(_BasePlotter):
         return self._save_and_show(
             fig, filename or "kr_map_distribution_comparison.png", show
         )
+
+    def save_kr_map_distribution_shift_animation(
+        self,
+        normal_samples: np.ndarray,
+        synthetic_samples: np.ndarray,
+        mapped_samples_sequence: np.ndarray,
+        solver_label: str,
+        outer_indices: Sequence[int] | None = None,
+        panel_titles: tuple[str, str, str] | None = None,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        filename_prefix: str | None = None,
+        fps: int = 12,
+        save_mp4: bool = True,
+        save_gif: bool = True,
+    ) -> dict[str, str]:
+        """Save mapped-distribution shift animation as MP4 and/or GIF."""
+        mapped_sequence = np.asarray(mapped_samples_sequence, dtype=float)
+        if mapped_sequence.ndim != 3 or mapped_sequence.shape[2] < 2:
+            raise ValueError(
+                "mapped_samples_sequence must have shape (num_frames, M, >=2)."
+            )
+
+        num_frames = int(mapped_sequence.shape[0])
+        if num_frames < 1:
+            raise ValueError("Animation requires at least one frame.")
+        if not save_mp4 and not save_gif:
+            raise ValueError("At least one of save_mp4 or save_gif must be True.")
+
+        if outer_indices is None:
+            resolved_outer_indices = list(range(num_frames))
+        else:
+            if len(outer_indices) != num_frames:
+                raise ValueError(
+                    "outer_indices must have the same length as mapped_samples_sequence."
+                )
+            resolved_outer_indices = [int(idx) for idx in outer_indices]
+
+        if panel_titles is None:
+            panel_titles = (
+                r"Reference normal $\mathcal{N}(0, I_2)$",
+                "Synthetic distribution",
+                f"Mapped with {solver_label}",
+            )
+
+        prefix = (
+            filename_prefix
+            if filename_prefix is not None and filename_prefix.strip() != ""
+            else "kr_map_distribution_shift"
+        )
+        effective_fps = max(int(fps), 1)
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        self._draw_distribution_panel(
+            ax=axes[0],
+            samples=np.asarray(normal_samples, dtype=float),
+            title=panel_titles[0],
+            xlabel="$x_1$",
+            ylabel="$x_2$",
+            color="tab:blue",
+            s=16,
+            xlim=xlim,
+            ylim=ylim,
+            grid_alpha=0.4,
+        )
+        self._draw_distribution_panel(
+            ax=axes[1],
+            samples=np.asarray(synthetic_samples, dtype=float),
+            title=panel_titles[1],
+            xlabel="$x_1$",
+            ylabel="$x_2$",
+            color="tab:red",
+            s=16,
+            xlim=xlim,
+            ylim=ylim,
+            grid_alpha=0.4,
+        )
+
+        mapped_ax = axes[2]
+        mapped_scatter = mapped_ax.scatter(
+            mapped_sequence[0, :, 0],
+            mapped_sequence[0, :, 1],
+            alpha=0.5,
+            color="tab:green",
+            edgecolor="k",
+            s=16,
+        )
+
+        def _title_for_frame(frame_idx: int) -> str:
+            outer_idx = resolved_outer_indices[frame_idx]
+            if outer_idx < 0:
+                iter_label = "initial weights"
+            else:
+                iter_label = f"outer PGD iter {outer_idx}"
+            return f"{panel_titles[2]} ({iter_label})"
+
+        self._style_axis(
+            ax=mapped_ax,
+            title=_title_for_frame(0),
+            xlabel="$x_1$",
+            ylabel="$x_2$",
+            xlim=xlim,
+            ylim=ylim,
+        )
+        mapped_ax.grid(True, linestyle="--", alpha=0.4)
+        mapped_ax.set_aspect("equal", adjustable="box")
+
+        def _update(frame_idx: int) -> tuple[Any, ...]:
+            mapped_scatter.set_offsets(mapped_sequence[frame_idx, :, :2])
+            mapped_ax.set_title(_title_for_frame(frame_idx), fontsize=TITLE_FONT_SIZE)
+            return (mapped_scatter,)
+
+        anim = animation.FuncAnimation(
+            fig=fig,
+            func=_update,
+            frames=num_frames,
+            interval=int(1000 / effective_fps),
+            blit=False,
+            repeat=True,
+        )
+
+        fig.tight_layout()
+        saved_paths: dict[str, str] = {}
+        mp4_error: str | None = None
+        gif_error: str | None = None
+
+        if save_mp4:
+            if animation.writers.is_available("ffmpeg"):
+                mp4_path = os.path.join(self.output_dir, f"{prefix}.mp4")
+                try:
+                    mp4_writer = animation.FFMpegWriter(
+                        fps=effective_fps,
+                        codec="h264",
+                    )
+                    anim.save(mp4_path, writer=mp4_writer, dpi=self.dpi)
+                    saved_paths["mp4"] = mp4_path
+                except Exception as exc:  # pragma: no cover - backend dependent
+                    mp4_error = str(exc)
+            else:
+                mp4_error = "ffmpeg writer is not available in this environment."
+
+        if save_gif:
+            gif_path = os.path.join(self.output_dir, f"{prefix}.gif")
+            try:
+                gif_writer = animation.PillowWriter(
+                    fps=effective_fps,
+                    metadata={"loop": 0},
+                )
+                anim.save(gif_path, writer=gif_writer, dpi=self.dpi)
+                saved_paths["gif"] = gif_path
+            except Exception as exc:  # pragma: no cover - backend dependent
+                gif_error = str(exc)
+
+        plt.close(fig)
+
+        if not saved_paths:
+            error_parts: list[str] = []
+            if mp4_error is not None:
+                error_parts.append(f"mp4: {mp4_error}")
+            if gif_error is not None:
+                error_parts.append(f"gif: {gif_error}")
+            detail = "; ".join(error_parts) if error_parts else "unknown error"
+            raise RuntimeError(f"Failed to save distribution shift animation ({detail}).")
+
+        return saved_paths
 
     def plot_distributions(
         self,

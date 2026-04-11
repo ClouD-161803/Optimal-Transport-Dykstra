@@ -12,6 +12,7 @@ class RunConfig:
 
     run_solver_mode: SolverMode = "both"
     save_full_run_iterates: bool = False
+    save_distribution_shift_media: bool = False
     enforce_matching: bool = False
 
 

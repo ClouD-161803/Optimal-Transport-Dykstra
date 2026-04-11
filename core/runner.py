@@ -14,6 +14,7 @@ from core.data import DatasetDataSource, SyntheticDataSource
 from core.io import (
     plot_component_solver_comparison,
     plot_distribution_for_mode,
+    save_distribution_shift_media_from_artifacts,
     save_full_run_iterates_json,
     save_full_run_iterates_npz,
 )
@@ -322,6 +323,14 @@ class ExperimentRunner:
             raise ValueError(
                 "PLOT_DYKSTRA_ITERATES=True is only valid when RUN_SOLVER_MODE='both'."
             )
+        if (
+            self.config.run.save_distribution_shift_media
+            and not self.config.run.save_full_run_iterates
+        ):
+            raise ValueError(
+                "save_distribution_shift_media=True requires "
+                "save_full_run_iterates=True so JSON/NPZ artifacts exist."
+            )
 
     def run(self) -> ExperimentRunSummary:
         self._validate()
@@ -330,6 +339,36 @@ class ExperimentRunner:
             num_particles=self.config.num_particles,
             num_dimensions=self.config.num_dimensions,
             seed=self.config.seed,
+        )
+        plotted_reference_samples = batch.metadata.get("plotted_reference_samples")
+        plotted_target_samples = batch.metadata.get("plotted_target_samples")
+        eval_target_samples = batch.metadata.get("eval_target_samples")
+        mapped_output_inverse_transform = batch.metadata.get(
+            "mapped_output_inverse_transform"
+        )
+        mapped_inverse_transform = _coerce_inverse_transform(mapped_output_inverse_transform)
+        reference_for_plot = (
+            np.asarray(plotted_reference_samples, dtype=float)
+            if plotted_reference_samples is not None
+            else np.asarray(batch.reference_samples, dtype=float)
+        )
+        target_for_plot = (
+            np.asarray(plotted_target_samples, dtype=float)
+            if plotted_target_samples is not None
+            else np.asarray(batch.target_samples, dtype=float)
+        )
+        target_for_eval = (
+            np.asarray(eval_target_samples, dtype=float)
+            if eval_target_samples is not None
+            else np.asarray(batch.target_samples, dtype=float)
+        )
+        initial_mapped_samples_for_video = batch.metadata.get(
+            "initial_mapped_samples_for_video"
+        )
+        initial_mapped_for_video = (
+            np.asarray(initial_mapped_samples_for_video, dtype=float)
+            if initial_mapped_samples_for_video is not None
+            else None
         )
 
         component_results = run_component_benchmark(
@@ -365,6 +404,10 @@ class ExperimentRunner:
                 base_inner_iter=self.config.optimization.base_inner_iter,
                 max_inner_iters=self.config.optimization.max_inner_iters,
                 solver_mode=self.config.run.run_solver_mode,
+                reference_samples_for_plot=reference_for_plot,
+                target_samples_for_plot=target_for_plot,
+                target_samples_for_eval=target_for_eval,
+                initial_mapped_samples_for_video=initial_mapped_for_video,
             )
             full_run_json_path = save_full_run_iterates_json(
                 results=component_results,
@@ -387,16 +430,30 @@ class ExperimentRunner:
                 npz_component_index=npz_component_index,
             )
 
+        distribution_shift_media_paths: dict[str, dict[str, str]] = {}
+        if self.config.run.save_distribution_shift_media:
+            if full_run_json_path is None:
+                raise RuntimeError(
+                    "Distribution shift media requested, but full-run JSON was not saved."
+                )
+            distribution_shift_media_paths = save_distribution_shift_media_from_artifacts(
+                full_run_json_path=full_run_json_path,
+                output_dir=self._resolve_results_dir("distribution_shift_media"),
+                kr_map=self.kr_map,
+                solver_mode=self.config.run.run_solver_mode,
+                num_dimensions=self.config.num_dimensions,
+                x_lim=self.config.plot.x_lim,
+                y_lim=self.config.plot.y_lim,
+                panel_titles_both=self.config.plot.distribution_panel_titles_both,
+                panel_titles_vanilla=self.config.plot.distribution_panel_titles_vanilla,
+                panel_titles_fast=self.config.plot.distribution_panel_titles_fast,
+                mapped_output_inverse_transform=mapped_inverse_transform,
+                fps=12,
+                save_mp4=True,
+                save_gif=True,
+            )
+
         if self.config.plot.plot_distributions:
-            plotted_reference_samples = batch.metadata.get("plotted_reference_samples")
-            plotted_target_samples = batch.metadata.get("plotted_target_samples")
-            eval_target_samples = batch.metadata.get("eval_target_samples")
-            mapped_output_inverse_transform = batch.metadata.get(
-                "mapped_output_inverse_transform"
-            )
-            mapped_inverse_transform = _coerce_inverse_transform(
-                mapped_output_inverse_transform
-            )
             plot_distribution_for_mode(
                 solver_mode=self.config.run.run_solver_mode,
                 output_dir=self._resolve_results_dir("full_experiment_benchmarks"),
@@ -414,24 +471,10 @@ class ExperimentRunner:
                 panel_titles_both=self.config.plot.distribution_panel_titles_both,
                 panel_titles_vanilla=self.config.plot.distribution_panel_titles_vanilla,
                 panel_titles_fast=self.config.plot.distribution_panel_titles_fast,
-                plotted_reference_samples=(
-                    np.asarray(plotted_reference_samples, dtype=float)
-                    if plotted_reference_samples is not None
-                    else None
-                ),
-                plotted_target_samples=(
-                    np.asarray(plotted_target_samples, dtype=float)
-                    if plotted_target_samples is not None
-                    else None
-                ),
-                eval_target_samples=(
-                    np.asarray(eval_target_samples, dtype=float)
-                    if eval_target_samples is not None
-                    else None
-                ),
-                mapped_output_inverse_transform=(
-                    mapped_inverse_transform
-                ),
+                plotted_reference_samples=reference_for_plot,
+                plotted_target_samples=target_for_plot,
+                eval_target_samples=target_for_eval,
+                mapped_output_inverse_transform=mapped_inverse_transform,
             )
 
         print(
@@ -457,6 +500,13 @@ class ExperimentRunner:
             print(f"Saved full iterate NPZ: {full_run_npz_path}")
         if full_run_json_path is not None:
             print(f"Saved full iterate JSON: {full_run_json_path}")
+        for solver_label, fmt_paths in distribution_shift_media_paths.items():
+            mp4_path = fmt_paths.get("mp4")
+            gif_path = fmt_paths.get("gif")
+            if mp4_path is not None:
+                print(f"Saved distribution shift MP4 ({solver_label}): {mp4_path}")
+            if gif_path is not None:
+                print(f"Saved distribution shift GIF ({solver_label}): {gif_path}")
 
         print("\nMap weights:")
         for result in component_results:
