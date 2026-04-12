@@ -48,12 +48,12 @@ X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTION
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 8989
+SEED: int = 2222
 NUM_DIMENSIONS: int = 2
-NUM_PARTICLES: int = 1000
+NUM_PARTICLES: int = 500
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 1000
+MAX_OUTER_ITER: int = 10000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
@@ -66,7 +66,7 @@ INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OU
 # SGD
 BATCH_SIZE: int | None = 100
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.075
+LEARNING_RATE: float = 0.2
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -86,20 +86,20 @@ LINE_SIGMA: float = 0.15
 DATA_HALFSPACE_A: np.ndarray | None = None
 DATA_HALFSPACE_B: np.ndarray | None = None
 
-DATA_GENERATOR = GVMDataGenerator(
-    alpha=GVM_ALPHA,
-    beta=GVM_BETA,
-    gamma=GVM_GAMMA,
-    kappa=GVM_KAPPA,
-    halfspace_A=DATA_HALFSPACE_A if "DATA_HALFSPACE_A" in globals() else None,
-    halfspace_b=DATA_HALFSPACE_B if "DATA_HALFSPACE_B" in globals() else None,
-)
+# DATA_GENERATOR = GVMDataGenerator(
+#     alpha=GVM_ALPHA,
+#     beta=GVM_BETA,
+#     gamma=GVM_GAMMA,
+#     kappa=GVM_KAPPA,
+#     halfspace_A=DATA_HALFSPACE_A if "DATA_HALFSPACE_A" in globals() else None,
+#     halfspace_b=DATA_HALFSPACE_B if "DATA_HALFSPACE_B" in globals() else None,
+# )
 # DATA_GENERATOR = DataGenerator(
 #     shear_function=BoomerangShearFunction(),
 # )
-# DATA_GENERATOR = DataGenerator(
-#     shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
-# )
+DATA_GENERATOR = DataGenerator(
+    shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+)
 
 DEGREE: int = 2
 BASIS: Basis = HermiteBasis()
