@@ -113,12 +113,34 @@ def save_full_run_iterates_npz(
             arrays_to_save[f"{prefix}_weight_iterates"] = np.asarray(
                 history.get("weight_iterates", []), dtype=float
             )
+            arrays_to_save[f"{prefix}_projection_iterations_run"] = np.asarray(
+                history.get("projection_iterations_run", []), dtype=int
+            )
+            arrays_to_save[f"{prefix}_projection_terminated_early"] = np.asarray(
+                history.get("projection_terminated_early", []), dtype=bool
+            )
+            arrays_to_save[f"{prefix}_projection_termination_reason"] = np.asarray(
+                history.get("projection_termination_reason", []), dtype=object
+            )
 
             solver_meta: dict[str, Any] = {
                 "weights_key": f"{prefix}_weights",
                 "objective_value_key": f"{prefix}_objective_value",
                 "dykstra_inner_iters_key": f"{prefix}_dykstra_inner_iters",
                 "weight_iterates_key": f"{prefix}_weight_iterates",
+                "projection_iterations_run_key": f"{prefix}_projection_iterations_run",
+                "projection_terminated_early_key": (
+                    f"{prefix}_projection_terminated_early"
+                ),
+                "projection_termination_reason_key": (
+                    f"{prefix}_projection_termination_reason"
+                ),
+                "projection_terminated_early_any": bool(
+                    history.get("projection_terminated_early_any", False)
+                ),
+                "projection_terminated_early_count": int(
+                    history.get("projection_terminated_early_count", 0)
+                ),
             }
 
             for proj_key in ("projection_results", "projection_results_full"):
@@ -146,12 +168,27 @@ def save_full_run_iterates_npz(
                     [getattr(result, "active_half_spaces", None) for result in proj_values],
                     dtype=object,
                 )
+                iterations_run = np.asarray(
+                    [getattr(result, "iterations_run", None) for result in proj_values],
+                    dtype=object,
+                )
+                terminated_early = np.asarray(
+                    [getattr(result, "terminated_early", None) for result in proj_values],
+                    dtype=object,
+                )
+                termination_reason = np.asarray(
+                    [getattr(result, "termination_reason", None) for result in proj_values],
+                    dtype=object,
+                )
 
                 arrays_to_save[f"{prefix}_{proj_key}_projection"] = projections
                 arrays_to_save[f"{prefix}_{proj_key}_squared_errors"] = squared_errors
                 arrays_to_save[f"{prefix}_{proj_key}_stalled_errors"] = stalled_errors
                 arrays_to_save[f"{prefix}_{proj_key}_converged_errors"] = converged_errors
                 arrays_to_save[f"{prefix}_{proj_key}_active_half_spaces"] = active_half_spaces
+                arrays_to_save[f"{prefix}_{proj_key}_iterations_run"] = iterations_run
+                arrays_to_save[f"{prefix}_{proj_key}_terminated_early"] = terminated_early
+                arrays_to_save[f"{prefix}_{proj_key}_termination_reason"] = termination_reason
 
                 solver_meta[f"{proj_key}_keys"] = {
                     "projection": f"{prefix}_{proj_key}_projection",
@@ -159,6 +196,9 @@ def save_full_run_iterates_npz(
                     "stalled_errors": f"{prefix}_{proj_key}_stalled_errors",
                     "converged_errors": f"{prefix}_{proj_key}_converged_errors",
                     "active_half_spaces": f"{prefix}_{proj_key}_active_half_spaces",
+                    "iterations_run": f"{prefix}_{proj_key}_iterations_run",
+                    "terminated_early": f"{prefix}_{proj_key}_terminated_early",
+                    "termination_reason": f"{prefix}_{proj_key}_termination_reason",
                 }
 
             outer_idx_key = "projection_outer_indices"
@@ -271,6 +311,34 @@ def save_full_run_iterates_json(
                     component_result.get("objective_vanilla")
                 ),
                 "objective_fast": to_json_safe(component_result.get("objective_fast")),
+                "projection_terminated_early_any_vanilla": to_json_safe(
+                    component_result.get("history_vanilla", {}).get(
+                        "projection_terminated_early_any"
+                    )
+                    if isinstance(component_result.get("history_vanilla"), dict)
+                    else None
+                ),
+                "projection_terminated_early_count_vanilla": to_json_safe(
+                    component_result.get("history_vanilla", {}).get(
+                        "projection_terminated_early_count"
+                    )
+                    if isinstance(component_result.get("history_vanilla"), dict)
+                    else None
+                ),
+                "projection_terminated_early_any_fast": to_json_safe(
+                    component_result.get("history_fast", {}).get(
+                        "projection_terminated_early_any"
+                    )
+                    if isinstance(component_result.get("history_fast"), dict)
+                    else None
+                ),
+                "projection_terminated_early_count_fast": to_json_safe(
+                    component_result.get("history_fast", {}).get(
+                        "projection_terminated_early_count"
+                    )
+                    if isinstance(component_result.get("history_fast"), dict)
+                    else None
+                ),
             }
             for component_result in results
         ],

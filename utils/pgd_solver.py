@@ -230,6 +230,9 @@ class ProjectedGradientDescent:
         projection_outer_indices: list[int] = []
         projection_results_full: list[Any] = []
         projection_outer_indices_full: list[int] = []
+        projection_iterations_run: list[int] = []
+        projection_terminated_early: list[bool] = []
+        projection_termination_reason: list[str] = []
         weight_iterates: list[np.ndarray] = [w.copy()]
 
         selective_tracking = self.track_error_outer_iterations is not None
@@ -293,6 +296,20 @@ class ProjectedGradientDescent:
                 projection_results.append(result)
                 projection_outer_indices.append(outer_idx)
             w = result.projection
+            iterations_run = int(
+                getattr(result, "iterations_run", current_max_iter) or 0
+            )
+            terminated_early = bool(getattr(result, "terminated_early", False))
+            termination_reason = str(
+                getattr(
+                    result,
+                    "termination_reason",
+                    "max_iter" if not terminated_early else "early_termination",
+                )
+            )
+            projection_iterations_run.append(iterations_run)
+            projection_terminated_early.append(terminated_early)
+            projection_termination_reason.append(termination_reason)
 
             w[~active_mask] = 0.0
 
@@ -300,10 +317,15 @@ class ProjectedGradientDescent:
             weight_iterates.append(w.copy())
 
             if (
+                hasattr(result, "iterations_run")
+                and result.iterations_run is not None
+            ):
+                dykstra_inner_iters.append(int(result.iterations_run))
+            elif (
                 hasattr(result, "squared_errors")
                 and result.squared_errors is not None
             ):
-                dykstra_inner_iters.append(len(result.squared_errors) - 1)
+                dykstra_inner_iters.append(max(int(len(result.squared_errors)) - 1, 0))
             else:
                 dykstra_inner_iters.append(current_max_iter)
 
@@ -314,6 +336,13 @@ class ProjectedGradientDescent:
             "projection_outer_indices": projection_outer_indices,
             "projection_results_full": projection_results_full,
             "projection_outer_indices_full": projection_outer_indices_full,
+            "projection_iterations_run": projection_iterations_run,
+            "projection_terminated_early": projection_terminated_early,
+            "projection_termination_reason": projection_termination_reason,
+            "projection_terminated_early_any": any(projection_terminated_early),
+            "projection_terminated_early_count": int(
+                sum(projection_terminated_early)
+            ),
             "weight_iterates": weight_iterates,
         }
 

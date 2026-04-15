@@ -129,6 +129,9 @@ class ConvexProjectionSolver(ABC):
         self.dim = len(self.z)
         self.x = self.z.copy()
         self.e = [np.zeros(self.dim) for _ in range(self.n)]
+        self.iterations_run = 0
+        self.terminated_early = False
+        self.termination_reason = "max_iter"
 
         if self.track_error:
             self.actual_projection = self._find_optimal_solution(
@@ -176,14 +179,29 @@ class ConvexProjectionSolver(ABC):
 
     def _format_output(self) -> ProjectionResult:
         """Package solver state into a ProjectionResult."""
+        final_cycle_index = int(max(0, min(self.iterations_run, self.max_iter)))
+        end_idx = final_cycle_index + 1
         return ProjectionResult(
             projection=self.x,
-            squared_errors=self.squared_errors if self.track_error else None,
-            stalled_errors=self.stalled_errors if self.track_error else None,
-            converged_errors=self.converged_errors if self.track_error else None,
+            iterations_run=final_cycle_index,
+            terminated_early=self.terminated_early,
+            termination_reason=self.termination_reason,
+            squared_errors=(
+                self.squared_errors[:end_idx].copy()
+                if self.track_error else None
+            ),
+            stalled_errors=(
+                self.stalled_errors[:end_idx].copy()
+                if self.track_error else None
+            ),
+            converged_errors=(
+                self.converged_errors[:end_idx].copy()
+                if self.track_error else None
+            ),
             active_half_spaces=(self.active_half_spaces
+                                [:, :end_idx].copy()
                                 if self.track_active_halfspaces else None),
-            iterates=self.iterates if self.track_iterates else None,
+            iterates=self.iterates[:end_idx].copy() if self.track_iterates else None,
         )
 
     @abstractmethod
@@ -215,6 +233,9 @@ class DykstraProjectionSolver(ConvexProjectionSolver):
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
 
+        self.iterations_run = self.max_iter
+        self.terminated_early = False
+        self.termination_reason = "max_iter"
         return self._format_output()
 
 
@@ -256,6 +277,9 @@ class DykstraMapHybridSolver(ConvexProjectionSolver):
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
 
+        self.iterations_run = self.max_iter
+        self.terminated_early = False
+        self.termination_reason = "max_iter"
         return self._format_output()
 
 
@@ -316,6 +340,15 @@ class DykstraStallDetectionSolver(ConvexProjectionSolver):
         self.stalling = False
         self._track_error_at(0)
         self._track_activity(0)
+        self.iterations_run = 0
+        self.terminated_early = False
+        self.termination_reason = "max_iter"
+
+        # If the incoming iterate is already feasible, projection is trivial.
+        if self._beta_check(self.x, self.A, self.b) == 1:
+            self.terminated_early = True
+            self.termination_reason = "initially_feasible"
+            return self._format_output()
 
         for i in range(self.max_iter):
             for m, (normal, offset) in enumerate(zip(self.A, self.b)):
@@ -339,5 +372,14 @@ class DykstraStallDetectionSolver(ConvexProjectionSolver):
             self._track_error_at(i + 1)
             self._track_activity(i + 1)
             self.prev_cycle_x[:] = self.curr_cycle_x
+            self.iterations_run = i + 1
 
+            # Early terminate as soon as a feasible iterate is reached.
+            if self._beta_check(self.x, self.A, self.b) == 1:
+                self.terminated_early = True
+                self.termination_reason = "feasible_iterate"
+                break
+
+        if not self.terminated_early:
+            self.iterations_run = self.max_iter
         return self._format_output()

@@ -33,8 +33,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
-SAVE_FULL_RUN_ITERATES: bool = False
-SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
+SAVE_FULL_RUN_ITERATES: bool = True
+SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = False
 ENFORCE_MATCHING: bool = False
 
 # Plot settings
@@ -42,31 +42,31 @@ PLOT_DYKSTRA_ITERATES: bool = False
 PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = (
     [0, -2, -1] if PLOT_DYKSTRA_ITERATES else None
 )
-PLOT_DISTRIBUTIONS: bool = True
+PLOT_DISTRIBUTIONS: bool = False
 PLOT_SIZE: float = 7.0 if PLOT_DISTRIBUTIONS else 0.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 2222
+SEED: int = 4321
 NUM_DIMENSIONS: int = 2
-NUM_PARTICLES: int = 500
+NUM_PARTICLES: int = 100
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 10000
+MAX_OUTER_ITER: int = 1000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-BASE_INNER_ITER: int = 1
-MAX_INNER_ITERS: int = 10
+BASE_INNER_ITER: int = 100
+MAX_INNER_ITERS: int = 100
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
-BATCH_SIZE: int | None = 100
+BATCH_SIZE: int | None = None
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.2
+LEARNING_RATE: float = 0.1
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -94,12 +94,12 @@ DATA_HALFSPACE_B: np.ndarray | None = None
 #     halfspace_A=DATA_HALFSPACE_A if "DATA_HALFSPACE_A" in globals() else None,
 #     halfspace_b=DATA_HALFSPACE_B if "DATA_HALFSPACE_B" in globals() else None,
 # )
-# DATA_GENERATOR = DataGenerator(
-#     shear_function=BoomerangShearFunction(),
-# )
 DATA_GENERATOR = DataGenerator(
-    shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+    shear_function=BoomerangShearFunction(),
 )
+# DATA_GENERATOR = DataGenerator(
+#     shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+# )
 
 DEGREE: int = 2
 BASIS: Basis = HermiteBasis()
