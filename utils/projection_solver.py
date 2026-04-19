@@ -19,6 +19,17 @@ Features:
 import numpy as np
 from abc import ABC, abstractmethod
 from scipy.optimize import minimize as scipy_minimize
+from scipy import sparse
+
+try:
+    import osqp  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    osqp = None
+
+try:
+    import quadprog  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    quadprog = None
 
 from utils.projection_result import ProjectionResult
 
@@ -415,9 +426,129 @@ class QPProjectionSolverScipySLSQP(ConvexProjectionSolver):
         return self._format_output()
 
 
+class QPProjectionSolverOSQP(ConvexProjectionSolver):
+    """Projection solver using OSQP for one-shot QP solves.
+
+    At each call, this solves:
+        min_x ||x - z||^2  subject to A x <= b
+    """
+
+    def _update_error(self, m: int, x_temp: np.ndarray, x: np.ndarray) -> None:
+        # Not used for one-shot QP solves.
+        return
+
+    def solve(self) -> ProjectionResult:
+        self._track_error_at(0)
+        self._track_activity(0)
+        self.iterations_run = 0
+        self.terminated_early = False
+        self.termination_reason = "qp_solved"
+
+        if self._beta_check(self.x, self.A, self.b) == 1:
+            self.terminated_early = True
+            self.termination_reason = "initially_feasible"
+            return self._format_output()
+
+        if osqp is None:
+            raise RuntimeError(
+                "OSQP backend requested, but package 'osqp' is not installed."
+            )
+
+        dim = int(self.dim)
+        P = sparse.eye(dim, format="csc") * 2.0
+        q = -2.0 * self.z
+        A_mat = sparse.csc_matrix(self.A)
+        l = np.full(self.n, -np.inf, dtype=float)
+        u = np.asarray(self.b, dtype=float)
+
+        problem = osqp.OSQP()
+        problem.setup(
+            P=P,
+            q=q,
+            A=A_mat,
+            l=l,
+            u=u,
+            verbose=False,
+            polish=True,
+        )
+        result = problem.solve()
+        status = str(getattr(result.info, "status", "")).lower()
+
+        if result.x is None or "solved" not in status:
+            # Robust fallback so benchmarks can still complete.
+            self.x = self._find_optimal_solution(self.z, self.A, self.b)
+            self.termination_reason = "qp_solved_fallback_scipy"
+        else:
+            self.x = np.asarray(result.x, dtype=float)
+
+        self.iterations_run = 1
+        self._track_error_at(1)
+        self._track_activity(1)
+        return self._format_output()
+
+
+class QPProjectionSolverQuadprog(ConvexProjectionSolver):
+    """Projection solver using quadprog for one-shot QP solves.
+
+    At each call, this solves:
+        min_x ||x - z||^2  subject to A x <= b
+    """
+
+    def _update_error(self, m: int, x_temp: np.ndarray, x: np.ndarray) -> None:
+        # Not used for one-shot QP solves.
+        return
+
+    def solve(self) -> ProjectionResult:
+        self._track_error_at(0)
+        self._track_activity(0)
+        self.iterations_run = 0
+        self.terminated_early = False
+        self.termination_reason = "qp_solved"
+
+        if self._beta_check(self.x, self.A, self.b) == 1:
+            self.terminated_early = True
+            self.termination_reason = "initially_feasible"
+            return self._format_output()
+
+        if quadprog is None:
+            raise RuntimeError(
+                "quadprog backend requested, but package 'quadprog' is not installed."
+            )
+
+        # quadprog expects:
+        #   min 1/2 x^T G x - a^T x
+        #   s.t. C^T x >= b
+        # Our problem:
+        #   min ||x-z||^2 = x^T x - 2 z^T x + const
+        # equivalent to 1/2 x^T (2I) x - (2z)^T x
+        # and A x <= b  ->  (-A) x >= (-b)
+        dim = int(self.dim)
+        G = 2.0 * np.eye(dim, dtype=float)
+        a = 2.0 * np.asarray(self.z, dtype=float)
+        C = -np.asarray(self.A, dtype=float).T
+        bvec = -np.asarray(self.b, dtype=float)
+
+        try:
+            sol = quadprog.solve_qp(G, a, C, bvec, meq=0)
+            self.x = np.asarray(sol[0], dtype=float)
+        except Exception:
+            # Robust fallback so benchmarks can still complete.
+            self.x = self._find_optimal_solution(self.z, self.A, self.b)
+            self.termination_reason = "qp_solved_fallback_scipy"
+
+        self.iterations_run = 1
+        self._track_error_at(1)
+        self._track_activity(1)
+        return self._format_output()
+
+
 QP_PROJECTION_SOLVER_REGISTRY: dict[str, type[ConvexProjectionSolver]] = {
     "scipy_slsqp": QPProjectionSolverScipySLSQP,
 }
+if osqp is not None:
+    QP_PROJECTION_SOLVER_REGISTRY["osqp"] = QPProjectionSolverOSQP
+if quadprog is not None:
+    QP_PROJECTION_SOLVER_REGISTRY["quadprog"] = QPProjectionSolverQuadprog
 
 
 def get_registered_qp_projection_solvers() -> dict[str, type[ConvexProjectionSolver]]:
