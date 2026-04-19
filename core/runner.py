@@ -14,6 +14,7 @@ from core.data import DatasetDataSource, SyntheticDataSource
 from core.io import (
     plot_component_solver_comparison,
     plot_distribution_for_mode,
+    save_solver_runtime_benchmark_json,
     save_distribution_shift_media_from_artifacts,
     save_full_run_iterates_json,
     save_full_run_iterates_npz,
@@ -330,6 +331,7 @@ class ExperimentRunSummary:
     results: list[dict[str, Any]]
     full_run_npz_path: str | None = None
     full_run_json_path: str | None = None
+    benchmark_json_path: str | None = None
 
 
 class ExperimentRunner:
@@ -436,6 +438,31 @@ class ExperimentRunner:
 
         full_run_npz_path: str | None = None
         full_run_json_path: str | None = None
+        benchmark_json_path: str | None = None
+
+        if self.config.run.run_solver_mode == "benchmark":
+            benchmark_output_dir = self._resolve_results_dir(
+                "full_experiment_benchmarks",
+                "solver_runtime_benchmarks",
+            )
+            benchmark_json_path = save_solver_runtime_benchmark_json(
+                results=component_results,
+                output_dir=benchmark_output_dir,
+                solver_mode=self.config.run.run_solver_mode,
+                num_dimensions=self.config.num_dimensions,
+                num_particles=self.config.num_particles,
+                seed=self.config.seed,
+                max_outer_iter=self.config.optimization.max_outer_iter,
+                base_inner_iter=self.config.optimization.base_inner_iter,
+                max_inner_iters=self.config.optimization.max_inner_iters,
+                batch_size=self.config.optimization.batch_size,
+                learning_rate=self.config.optimization.learning_rate,
+                lr_decay=self.config.optimization.lr_decay,
+                l1_reg=self.config.optimization.l1_reg,
+                prune_interval=self.config.optimization.prune_interval,
+                prune_threshold=self.config.optimization.prune_threshold,
+                dykstra_kwargs=dict(self.config.optimization.dykstra_kwargs),
+            )
         if self.config.run.save_full_run_iterates:
             full_run_output_dir = self._resolve_results_dir(
                 "full_experiment_benchmarks",
@@ -547,6 +574,8 @@ class ExperimentRunner:
             print(f"Saved full iterate NPZ: {full_run_npz_path}")
         if full_run_json_path is not None:
             print(f"Saved full iterate JSON: {full_run_json_path}")
+        if benchmark_json_path is not None:
+            print(f"Saved benchmark JSON: {benchmark_json_path}")
         for solver_label, fmt_paths in distribution_shift_media_paths.items():
             mp4_path = fmt_paths.get("mp4")
             gif_path = fmt_paths.get("gif")
@@ -573,6 +602,7 @@ class ExperimentRunner:
             results=component_results,
             full_run_npz_path=full_run_npz_path,
             full_run_json_path=full_run_json_path,
+            benchmark_json_path=benchmark_json_path,
         )
 
 

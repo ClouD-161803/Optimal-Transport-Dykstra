@@ -39,6 +39,123 @@ def to_json_safe(value: Any) -> Any:
     return value
 
 
+def save_solver_runtime_benchmark_json(
+    results: list[dict[str, Any]],
+    output_dir: str,
+    solver_mode: SolverMode,
+    num_dimensions: int,
+    num_particles: int,
+    seed: int,
+    max_outer_iter: int,
+    base_inner_iter: int,
+    max_inner_iters: int,
+    batch_size: int | None,
+    learning_rate: float,
+    lr_decay: float,
+    l1_reg: float,
+    prune_interval: int,
+    prune_threshold: float,
+    dykstra_kwargs: dict[str, Any],
+) -> str:
+    """Write benchmark-focused JSON (times, final objectives, final weights)."""
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = (
+        f"kr{num_dimensions}d_solver_runtime_benchmark_"
+        f"SEED={seed}_M={num_particles}_PGDITERS={max_outer_iter}_"
+        f"DYKSTRA_ITERS={base_inner_iter}_{max_inner_iters}_MODE={solver_mode}_TS={timestamp}.json"
+    )
+    output_path = os.path.join(output_dir, filename)
+
+    component_payloads: list[dict[str, Any]] = []
+    for component_result in results:
+        component_dim = int(component_result["component_dim"])
+        solver_labels = sorted(
+            key.removeprefix("time_")
+            for key in component_result.keys()
+            if key.startswith("time_")
+        )
+        solver_entries: dict[str, Any] = {}
+        for solver_label in solver_labels:
+            time_key = f"time_{solver_label}"
+            obj_key = f"objective_{solver_label}"
+            w_key = f"w_{solver_label}"
+            weights = component_result.get(w_key)
+            solver_entries[solver_label] = {
+                "runtime_seconds": to_json_safe(component_result.get(time_key)),
+                "objective_final": to_json_safe(component_result.get(obj_key)),
+                "weights": to_json_safe(weights),
+                "weights_l2_norm": (
+                    float(np.linalg.norm(np.asarray(weights, dtype=float)))
+                    if weights is not None
+                    else None
+                ),
+            }
+
+        ranked_by_runtime = sorted(
+            (
+                (label, solver_entries[label].get("runtime_seconds"))
+                for label in solver_entries
+                if solver_entries[label].get("runtime_seconds") is not None
+            ),
+            key=lambda pair: float(pair[1]),
+        )
+        ranking_payload = [
+            {"rank": idx + 1, "solver": label, "runtime_seconds": float(runtime)}
+            for idx, (label, runtime) in enumerate(ranked_by_runtime)
+        ]
+
+        distance_from_fast: dict[str, float | None] = {}
+        w_fast = component_result.get("w_fast")
+        if w_fast is not None:
+            w_fast_arr = np.asarray(w_fast, dtype=float)
+            for solver_label in solver_entries:
+                weights = component_result.get(f"w_{solver_label}")
+                if weights is None:
+                    distance_from_fast[solver_label] = None
+                    continue
+                w_arr = np.asarray(weights, dtype=float)
+                if w_arr.shape != w_fast_arr.shape:
+                    distance_from_fast[solver_label] = None
+                    continue
+                distance_from_fast[solver_label] = float(np.linalg.norm(w_arr - w_fast_arr))
+
+        component_payloads.append(
+            {
+                "component_dim": component_dim,
+                "solvers": solver_entries,
+                "runtime_ranking": ranking_payload,
+                "weights_l2_distance_from_fast": to_json_safe(distance_from_fast),
+            }
+        )
+
+    payload: dict[str, Any] = {
+        "metadata": {
+            "created_at_local": datetime.now().isoformat(timespec="seconds"),
+            "artifact_type": "solver_runtime_benchmark",
+            "solver_mode": solver_mode,
+            "num_dimensions": num_dimensions,
+            "num_particles": num_particles,
+            "seed": seed,
+            "max_outer_iter": max_outer_iter,
+            "base_inner_iter": base_inner_iter,
+            "max_inner_iters": max_inner_iters,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "lr_decay": lr_decay,
+            "l1_reg": l1_reg,
+            "prune_interval": prune_interval,
+            "prune_threshold": prune_threshold,
+            "dykstra_kwargs": to_json_safe(dykstra_kwargs),
+        },
+        "components": component_payloads,
+    }
+
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    return output_path
+
+
 def save_full_run_iterates_npz(
     results: list[dict[str, Any]],
     output_dir: str,
