@@ -43,7 +43,7 @@ PLOT_DYKSTRA_ITERATES: bool = False
 PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = (
     [0, -2, -1] if PLOT_DYKSTRA_ITERATES else None
 )
-PLOT_DISTRIBUTIONS: bool = True
+PLOT_DISTRIBUTIONS: bool = False
 PLOT_SIZE: float = 7.0 if PLOT_DISTRIBUTIONS else 0.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
