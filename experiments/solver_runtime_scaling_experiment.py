@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from statistics import mean, median, stdev
@@ -22,6 +23,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.config import ExperimentConfig, OptimizationConfig, PlotConfig, RunConfig
+import core.runner as runner_module
 from core.runner import build_identity_initial_guesses, run_synthetic_experiment
 from utils.data_generator import LayeredBoomerangShearFunction, DataGenerator
 from utils.optimal_transport import Basis, HermiteBasis, KRMap
@@ -78,12 +80,37 @@ SCALING_OUTPUT_DIR = os.path.join(
     "solver_runtime_scaling",
 )
 
+# Suppress specific solvers from runtime-scaling benchmark runs (labels as printed).
+SUPPRESSED_SOLVER_LABELS: set[str] = {"qp_scipy_slsqp"}
+
 
 @dataclass(frozen=True)
 class RunArtifact:
     seed: int
     num_dimensions: int
     benchmark_json_path: str
+
+
+@contextmanager
+def _temporarily_filter_benchmark_qp_backends() -> Any:
+    """Temporarily filter runner benchmark backends for this experiment only."""
+    original = runner_module.get_registered_qp_projection_solvers
+
+    def _filtered() -> dict[str, type]:
+        backend_map = original()
+        filtered: dict[str, type] = {}
+        for backend_name, solver_cls in backend_map.items():
+            solver_label = f"qp_{backend_name}"
+            if solver_label in SUPPRESSED_SOLVER_LABELS:
+                continue
+            filtered[backend_name] = solver_cls
+        return filtered
+
+    runner_module.get_registered_qp_projection_solvers = _filtered
+    try:
+        yield
+    finally:
+        runner_module.get_registered_qp_projection_solvers = original
 
 
 def _build_experiment_config(seed: int, num_dimensions: int) -> ExperimentConfig:
@@ -289,13 +316,16 @@ def run_runtime_scaling_experiment() -> dict[str, str]:
         f"dimensions={DIMENSIONS}, seeds={SEEDS}, particles={NUM_PARTICLES}"
     )
 
+    print(f"Suppressed solver labels: {sorted(SUPPRESSED_SOLVER_LABELS)}")
+
     artifacts: list[RunArtifact] = []
-    for num_dimensions in DIMENSIONS:
-        for seed in SEEDS:
-            print(f"\n=== Scaling run: dim={num_dimensions}, seed={seed} ===")
-            artifact = _run_single(seed=seed, num_dimensions=num_dimensions)
-            print(f"Saved per-run benchmark JSON: {artifact.benchmark_json_path}")
-            artifacts.append(artifact)
+    with _temporarily_filter_benchmark_qp_backends():
+        for num_dimensions in DIMENSIONS:
+            for seed in SEEDS:
+                print(f"\n=== Scaling run: dim={num_dimensions}, seed={seed} ===")
+                artifact = _run_single(seed=seed, num_dimensions=num_dimensions)
+                print(f"Saved per-run benchmark JSON: {artifact.benchmark_json_path}")
+                artifacts.append(artifact)
 
     component_rows, fullmap_rows = _collect_rows(artifacts=artifacts)
     component_agg = _aggregate_rows(component_rows, value_key="runtime_seconds")
