@@ -89,6 +89,66 @@ class RoughLineShearFunction(ShearFunction):
         return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
 
 
+class LayeredBoomerangShearFunction(ShearFunction):
+    """Deterministic multi-output quadratic shear for higher dimensions.
+
+    This shears every coordinate j >= 1 with a decaying-strength boomerang-like
+    term that depends only on coordinates <= j (triangular dependency):
+
+        z[:, j] = zeta[:, j] + s_j(zeta)
+
+    where each ``s_j`` combines linear and quadratic terms and scales by
+    ``strength_decay ** (j - 1)``.
+    """
+
+    def __init__(
+        self,
+        linear_scale: float = 0.35,
+        quadratic_scale: float = 0.6,
+        strength_decay: float = 0.75,
+    ) -> None:
+        if strength_decay <= 0.0:
+            raise ValueError("strength_decay must be > 0.")
+        self.linear_scale = float(linear_scale)
+        self.quadratic_scale = float(quadratic_scale)
+        self.strength_decay = float(strength_decay)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        """Return per-particle per-dimension shear matrix of shape (M, d-1)."""
+        if zeta.ndim != 2:
+            raise ValueError("zeta must be a 2D array.")
+        num_particles, num_dimensions = zeta.shape
+        if num_dimensions < 2:
+            raise ValueError("num_dimensions must be >= 2.")
+
+        shears = np.zeros((num_particles, num_dimensions - 1), dtype=float)
+        for j in range(1, num_dimensions):
+            x = zeta[:, : (j + 1)]
+            lin_weights = np.linspace(
+                1.0,
+                0.35,
+                j + 1,
+                dtype=float,
+            )
+            linear = x @ lin_weights
+
+            cross_sum = np.zeros(num_particles, dtype=float)
+            for a in range(j + 1):
+                for b in range(a, j + 1):
+                    coeff = 1.0 / (1.0 + a + b)
+                    term = x[:, a] * x[:, b]
+                    if a != b:
+                        term *= 0.5
+                    cross_sum += coeff * term
+
+            strength = self.strength_decay ** (j - 1)
+            shears[:, j - 1] = strength * (
+                self.linear_scale * linear
+                + self.quadratic_scale * cross_sum
+            )
+        return shears
+
+
 class DataGenerator:
     """Configurable synthetic data generator for KR-map experiments."""
 
@@ -204,14 +264,33 @@ class DataGenerator:
         return np.vstack(zeta_chunks), np.vstack(z_chunks)
 
     def _apply_shear(self, zeta: np.ndarray) -> np.ndarray:
-        """Apply the configured shear to the second coordinate."""
+        """Apply configured shear to one or many coordinates.
+
+        Supported shear_function outputs:
+        - shape (M,) or (M, 1): legacy scalar shear for coordinate index 1 only.
+        - shape (M, d-1): multi-output shear for coordinates 1..d-1.
+        """
         z = zeta.copy()
-        shear_values = np.asarray(self.shear_function(zeta), dtype=float).reshape(-1)
-        if shear_values.shape[0] != zeta.shape[0]:
+        shear_values = np.asarray(self.shear_function(zeta), dtype=float)
+        if shear_values.ndim == 1:
+            shear_values = shear_values.reshape(-1, 1)
+
+        if shear_values.ndim != 2 or shear_values.shape[0] != zeta.shape[0]:
             raise ValueError(
-                "shear_function must return one scalar shear value per particle."
+                "shear_function output must have shape (M,), (M,1), or (M,d-1)."
             )
-        z[:, 1] = zeta[:, 1] + shear_values
+
+        if shear_values.shape[1] == 1:
+            z[:, 1] = zeta[:, 1] + shear_values[:, 0]
+            return z
+
+        expected_cols = zeta.shape[1] - 1
+        if shear_values.shape[1] != expected_cols:
+            raise ValueError(
+                "For multidimensional shearing, shear_function must return shape "
+                f"(M, {expected_cols}). Got {shear_values.shape}."
+            )
+        z[:, 1:] = zeta[:, 1:] + shear_values
         return z
 
 
