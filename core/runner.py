@@ -530,7 +530,10 @@ class ExperimentRunner:
         if self.config.plot.plot_distributions:
             plot_distribution_for_mode(
                 solver_mode=self.config.run.run_solver_mode,
-                output_dir=self._resolve_results_dir("full_experiment_benchmarks"),
+                output_dir=self._resolve_results_dir(
+                    "full_experiment_benchmarks",
+                    "distribution_plots",
+                ),
                 normal_samples=batch.reference_samples,
                 z_samples=batch.target_samples,
                 results=component_results,
@@ -568,7 +571,7 @@ class ExperimentRunner:
             "Saved "
             f"{num_component_figures} component error figure(s) and "
             f"{num_distribution_figures} distribution comparison figure(s) "
-            "in results/full_experiment_benchmarks."
+            "in results/full_experiment_benchmarks/distribution_plots."
         )
         if full_run_npz_path is not None:
             print(f"Saved full iterate NPZ: {full_run_npz_path}")
