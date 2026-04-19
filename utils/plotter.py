@@ -651,7 +651,7 @@ class BenchmarkPlotter(_BasePlotter):
 
         self._style_axis(
             ax=ax,
-            title=title,
+            title="",
             xlabel="Problem dimension",
             ylabel=y_label,
         )
