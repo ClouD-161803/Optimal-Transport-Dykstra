@@ -19,10 +19,10 @@ import numpy as np
 
 from .projection_result import ProjectionResult
 
-TITLE_FONT_SIZE = 12
-AXIS_LABEL_FONT_SIZE = 11
-TICK_LABEL_FONT_SIZE = 10
-LEGEND_FONT_SIZE = 10
+TITLE_FONT_SIZE = 20
+AXIS_LABEL_FONT_SIZE = 18
+TICK_LABEL_FONT_SIZE = 16
+LEGEND_FONT_SIZE = 16
 
 
 class _BasePlotter:
@@ -513,7 +513,7 @@ class DistributionPlotter(_BasePlotter):
             try:
                 gif_writer = animation.PillowWriter(
                     fps=effective_fps,
-                    metadata={"loop": 0},
+                    metadata={"loop": "0"},
                 )
                 anim.save(gif_path, writer=gif_writer, dpi=self.dpi)
                 saved_paths["gif"] = gif_path
@@ -608,4 +608,55 @@ class DistributionPlotter(_BasePlotter):
             ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
+
+
+class BenchmarkPlotter(_BasePlotter):
+    """Plotter for benchmark-level summaries (e.g., runtime scaling curves)."""
+
+    def plot_runtime_scaling(
+        self,
+        aggregated_rows: Sequence[dict[str, Any]],
+        y_key_mean: str,
+        y_key_std: str,
+        title: str,
+        y_label: str,
+        filename: str,
+        show: bool = False,
+    ) -> Figure:
+        """Plot runtime-vs-dimension curves with per-solver error bars.
+
+        Uses shared global plot styling via ``_style_axis``.
+        """
+        by_solver: dict[str, list[dict[str, Any]]] = {}
+        for row in aggregated_rows:
+            solver_label = str(row["solver"])
+            by_solver.setdefault(solver_label, []).append(row)
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        for solver_label in sorted(by_solver.keys()):
+            rows = sorted(by_solver[solver_label], key=lambda r: int(r["num_dimensions"]))
+            dims = [int(r["num_dimensions"]) for r in rows]
+            means = [float(r[y_key_mean]) for r in rows]
+            stds = [float(r[y_key_std]) for r in rows]
+            ax.errorbar(
+                dims,
+                means,
+                yerr=stds,
+                marker="o",
+                linewidth=2.2,
+                markersize=6,
+                capsize=4,
+                label=solver_label,
+            )
+
+        self._style_axis(
+            ax=ax,
+            title=title,
+            xlabel="Problem dimension",
+            ylabel=y_label,
+        )
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=LEGEND_FONT_SIZE)
+
+        return self._save_and_show(fig, filename=filename, show=show)
 

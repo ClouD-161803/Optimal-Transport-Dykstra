@@ -17,7 +17,6 @@ from datetime import datetime
 from statistics import mean, median, stdev
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -26,6 +25,7 @@ from core.config import ExperimentConfig, OptimizationConfig, PlotConfig, RunCon
 from core.runner import build_identity_initial_guesses, run_synthetic_experiment
 from utils.data_generator import LayeredBoomerangShearFunction, DataGenerator
 from utils.optimal_transport import Basis, HermiteBasis, KRMap
+from utils.plotter import BenchmarkPlotter
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -281,45 +281,6 @@ def _write_json(path: str, payload: dict[str, Any]) -> None:
         json.dump(payload, handle, indent=2)
 
 
-def _plot_runtime_vs_dimension(
-    aggregated_rows: list[dict[str, Any]],
-    output_path: str,
-    y_key_mean: str,
-    y_key_std: str,
-    title: str,
-    y_label: str,
-) -> None:
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    by_solver: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in aggregated_rows:
-        by_solver[str(row["solver"])].append(row)
-
-    plt.figure(figsize=(10, 6))
-    for solver_label in sorted(by_solver.keys()):
-        rows = sorted(by_solver[solver_label], key=lambda r: int(r["num_dimensions"]))
-        dims = [int(r["num_dimensions"]) for r in rows]
-        means = [float(r[y_key_mean]) for r in rows]
-        stds = [float(r[y_key_std]) for r in rows]
-        plt.errorbar(
-            dims,
-            means,
-            yerr=stds,
-            marker="o",
-            linewidth=1.8,
-            capsize=3,
-            label=solver_label,
-        )
-
-    plt.title(title)
-    plt.xlabel("Problem dimension")
-    plt.ylabel(y_label)
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=160)
-    plt.close()
-
-
 def run_runtime_scaling_experiment() -> dict[str, str]:
     os.makedirs(SCALING_OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -374,21 +335,24 @@ def run_runtime_scaling_experiment() -> dict[str, str]:
         SCALING_OUTPUT_DIR,
         f"solver_runtime_vs_dimension_component_TS={timestamp}.png",
     )
-    _plot_runtime_vs_dimension(
+    benchmark_plotter = BenchmarkPlotter(output_dir=SCALING_OUTPUT_DIR, dpi=180)
+    benchmark_plotter.plot_runtime_scaling(
         aggregated_rows=fullmap_agg,
-        output_path=fullmap_plot_path,
         y_key_mean="mean",
         y_key_std="std",
         title="Solver Runtime vs Dimension (Full Map Runtime)",
         y_label="Runtime (seconds)",
+        filename=os.path.basename(fullmap_plot_path),
+        show=False,
     )
-    _plot_runtime_vs_dimension(
+    benchmark_plotter.plot_runtime_scaling(
         aggregated_rows=component_agg,
-        output_path=component_plot_path,
         y_key_mean="mean",
         y_key_std="std",
         title="Solver Runtime vs Dimension (Per-Component Runtime)",
         y_label="Runtime (seconds)",
+        filename=os.path.basename(component_plot_path),
+        show=False,
     )
 
     summary_payload = {
