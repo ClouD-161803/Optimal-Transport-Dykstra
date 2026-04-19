@@ -20,7 +20,11 @@ from core.io import (
 )
 from utils.optimal_transport import KRMap
 from utils.pgd_solver import ProjectedGradientDescent
-from utils.projection_solver import DykstraProjectionSolver, DykstraStallDetectionSolver
+from utils.projection_solver import (
+    DykstraProjectionSolver,
+    DykstraStallDetectionSolver,
+    get_registered_qp_projection_solvers,
+)
 
 
 def _coerce_inverse_transform(
@@ -45,25 +49,51 @@ class SolverVariant:
 
     label: str
     projection_solver_class: type
-    delete_spaces: bool = False
+    solver_kwargs: dict[str, Any] | None = None
 
 
 def resolve_solver_variants(run_solver_mode: SolverMode) -> list[SolverVariant]:
     """Resolve active solver variants from run mode."""
     if run_solver_mode == "both":
         return [
-            SolverVariant("vanilla", DykstraProjectionSolver, delete_spaces=False),
-            SolverVariant("fast", DykstraStallDetectionSolver, delete_spaces=True),
+            SolverVariant("vanilla", DykstraProjectionSolver),
+            SolverVariant(
+                "fast",
+                DykstraStallDetectionSolver,
+                solver_kwargs={"delete_spaces": True},
+            ),
         ]
     if run_solver_mode == "vanilla":
         return [
-            SolverVariant("vanilla", DykstraProjectionSolver, delete_spaces=False),
+            SolverVariant("vanilla", DykstraProjectionSolver),
         ]
     if run_solver_mode == "fast":
         return [
-            SolverVariant("fast", DykstraStallDetectionSolver, delete_spaces=True),
+            SolverVariant(
+                "fast",
+                DykstraStallDetectionSolver,
+                solver_kwargs={"delete_spaces": True},
+            ),
         ]
-    raise ValueError("run_solver_mode must be one of: 'both', 'vanilla', 'fast'.")
+    if run_solver_mode == "benchmark":
+        variants: list[SolverVariant] = [
+            SolverVariant(
+                "fast",
+                DykstraStallDetectionSolver,
+                solver_kwargs={"delete_spaces": True},
+            ),
+        ]
+        for backend_name, solver_cls in get_registered_qp_projection_solvers().items():
+            variants.append(
+                SolverVariant(
+                    label=f"qp_{backend_name}",
+                    projection_solver_class=solver_cls,
+                )
+            )
+        return variants
+    raise ValueError(
+        "run_solver_mode must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+    )
 
 
 def build_pgd_solver(
@@ -95,8 +125,8 @@ def build_pgd_solver(
         "store_all_projection_results": store_all_projection_results,
         **dykstra_kwargs,
     }
-    if variant.delete_spaces:
-        solver_kwargs["delete_spaces"] = True
+    if variant.solver_kwargs:
+        solver_kwargs.update(variant.solver_kwargs)
     return ProjectedGradientDescent(**solver_kwargs)
 
 
@@ -140,20 +170,27 @@ def _print_component_timing(
     component_result: dict[str, Any],
     run_solver_mode: SolverMode,
 ) -> None:
-    time_vanilla = component_result.get("time_vanilla")
-    time_fast = component_result.get("time_fast")
-    coeff_close = component_result.get("coefficients_close")
+    timing_items = sorted(
+        (
+            (key.removeprefix("time_"), value)
+            for key, value in component_result.items()
+            if key.startswith("time_") and isinstance(value, (float, np.floating))
+        ),
+        key=lambda pair: pair[0],
+    )
+    if not timing_items:
+        return
 
-    if run_solver_mode == "both" and time_vanilla is not None and time_fast is not None:
+    timing_text = ", ".join(
+        f"{label}={float(elapsed):.4f}s" for label, elapsed in timing_items
+    )
+    if run_solver_mode == "both" and "coefficients_close" in component_result:
         print(
             f"[Component {component_dim}/{num_dimensions}] "
-            f"vanilla={time_vanilla:.4f}s, fast={time_fast:.4f}s, "
-            f"coeff_close={coeff_close}"
+            f"{timing_text}, coeff_close={component_result.get('coefficients_close')}"
         )
-    elif run_solver_mode == "vanilla" and time_vanilla is not None:
-        print(f"[Component {component_dim}/{num_dimensions}] vanilla={time_vanilla:.4f}s")
-    elif run_solver_mode == "fast" and time_fast is not None:
-        print(f"[Component {component_dim}/{num_dimensions}] fast={time_fast:.4f}s")
+        return
+    print(f"[Component {component_dim}/{num_dimensions}] {timing_text}")
 
 
 def run_component_benchmark(
@@ -317,11 +354,21 @@ class ExperimentRunner:
 
     def _validate(self) -> None:
         solver_mode = self.config.run.run_solver_mode
-        if solver_mode not in {"both", "vanilla", "fast"}:
-            raise ValueError("RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast'.")
+        if solver_mode not in {"both", "vanilla", "fast", "benchmark"}:
+            raise ValueError(
+                "RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+            )
         if solver_mode != "both" and self.config.plot.plot_dykstra_iterates:
             raise ValueError(
                 "PLOT_DYKSTRA_ITERATES=True is only valid when RUN_SOLVER_MODE='both'."
+            )
+        if (
+            solver_mode == "benchmark"
+            and self.config.run.save_distribution_shift_media
+        ):
+            raise ValueError(
+                "save_distribution_shift_media=True is not supported with "
+                "RUN_SOLVER_MODE='benchmark'."
             )
         if (
             self.config.run.save_distribution_shift_media
@@ -511,10 +558,16 @@ class ExperimentRunner:
         print("\nMap weights:")
         for result in component_results:
             dim = result["component_dim"]
-            if "w_vanilla" in result:
-                print(f"  Component {dim} (vanilla): {result['w_vanilla']}")
-            if "w_fast" in result:
-                print(f"  Component {dim} (fast):    {result['w_fast']}")
+            weight_items = sorted(
+                (
+                    (key.removeprefix("w_"), value)
+                    for key, value in result.items()
+                    if key.startswith("w_")
+                ),
+                key=lambda pair: pair[0],
+            )
+            for solver_label, weights in weight_items:
+                print(f"  Component {dim} ({solver_label}): {weights}")
 
         return ExperimentRunSummary(
             results=component_results,

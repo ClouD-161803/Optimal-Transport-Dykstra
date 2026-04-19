@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-SolverMode = Literal["both", "vanilla", "fast"]
+SolverMode = Literal["both", "vanilla", "fast", "benchmark"]
 
 
 @dataclass(frozen=True)

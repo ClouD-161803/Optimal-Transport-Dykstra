@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import cast
 from typing import Any
 
@@ -32,8 +33,8 @@ from utils.optimal_transport import Basis, HermiteBasis, KRMap
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
-RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
-SAVE_FULL_RUN_ITERATES: bool = True
+RUN_SOLVER_MODE: str = "benchmark"  # options: "both", "vanilla", "fast", "benchmark"
+SAVE_FULL_RUN_ITERATES: bool = False
 SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = False
 ENFORCE_MATCHING: bool = False
 
@@ -42,15 +43,15 @@ PLOT_DYKSTRA_ITERATES: bool = False
 PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = (
     [0, -2, -1] if PLOT_DYKSTRA_ITERATES else None
 )
-PLOT_DISTRIBUTIONS: bool = False
+PLOT_DISTRIBUTIONS: bool = True
 PLOT_SIZE: float = 7.0 if PLOT_DISTRIBUTIONS else 0.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 4321
+SEED: int = 162977
 NUM_DIMENSIONS: int = 2
-NUM_PARTICLES: int = 100
+NUM_PARTICLES: int = 500
 
 # Optimisation settings
 MAX_OUTER_ITER: int = 1000
@@ -59,14 +60,14 @@ GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-BASE_INNER_ITER: int = 100
+BASE_INNER_ITER: int = 10
 MAX_INNER_ITERS: int = 100
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
-BATCH_SIZE: int | None = None
+BATCH_SIZE: int | None = 100
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.1
+LEARNING_RATE: float = 0.075
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -116,8 +117,10 @@ W_INIT: dict[int, np.ndarray] = build_identity_initial_guesses(
 
 def _build_experiment_config() -> ExperimentConfig:
     """Build a typed config from module-level constants."""
-    if RUN_SOLVER_MODE not in {"both", "vanilla", "fast"}:
-        raise ValueError("RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast'.")
+    if RUN_SOLVER_MODE not in {"both", "vanilla", "fast", "benchmark"}:
+        raise ValueError(
+            "RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+        )
     validated_run_solver_mode = cast(SolverMode, RUN_SOLVER_MODE)
 
     run_config = RunConfig(
@@ -189,8 +192,10 @@ def benchmark_kr_map_components_nd(
     store_full_projection_histories: bool = False,
 ) -> list[dict[str, Any]]:
     """Backward-compatible wrapper around the refactored core benchmark loop."""
-    if run_solver_mode not in {"both", "vanilla", "fast"}:
-        raise ValueError("run_solver_mode must be one of: 'both', 'vanilla', 'fast'.")
+    if run_solver_mode not in {"both", "vanilla", "fast", "benchmark"}:
+        raise ValueError(
+            "run_solver_mode must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+        )
     validated_run_solver_mode = cast(SolverMode, run_solver_mode)
 
     optimization_kwargs: dict[str, Any] = {

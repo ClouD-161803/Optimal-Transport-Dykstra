@@ -383,3 +383,43 @@ class DykstraStallDetectionSolver(ConvexProjectionSolver):
         if not self.terminated_early:
             self.iterations_run = self.max_iter
         return self._format_output()
+
+
+class QPProjectionSolverScipySLSQP(ConvexProjectionSolver):
+    """Projection solver using SciPy SLSQP for one-shot QP solves.
+
+    At each call, this solves:
+        min_x ||x - z||^2  subject to A x <= b
+    """
+
+    def _update_error(self, m: int, x_temp: np.ndarray, x: np.ndarray) -> None:
+        # Not used for one-shot QP solves.
+        return
+
+    def solve(self) -> ProjectionResult:
+        self._track_error_at(0)
+        self._track_activity(0)
+        self.iterations_run = 0
+        self.terminated_early = False
+        self.termination_reason = "qp_solved"
+
+        if self._beta_check(self.x, self.A, self.b) == 1:
+            self.terminated_early = True
+            self.termination_reason = "initially_feasible"
+            return self._format_output()
+
+        self.x = self._find_optimal_solution(self.z, self.A, self.b)
+        self.iterations_run = 1
+        self._track_error_at(1)
+        self._track_activity(1)
+        return self._format_output()
+
+
+QP_PROJECTION_SOLVER_REGISTRY: dict[str, type[ConvexProjectionSolver]] = {
+    "scipy_slsqp": QPProjectionSolverScipySLSQP,
+}
+
+
+def get_registered_qp_projection_solvers() -> dict[str, type[ConvexProjectionSolver]]:
+    """Return copy of registered QP projection solver backends."""
+    return dict(QP_PROJECTION_SOLVER_REGISTRY)

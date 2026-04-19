@@ -27,7 +27,7 @@ from utils.optimal_transport import Basis, HermiteBasis, KRMap
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
-RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast"
+RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast", "benchmark"
 SAVE_FULL_RUN_ITERATES: bool = True
 SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
 ENFORCE_MATCHING: bool = False
@@ -224,8 +224,10 @@ class WhitenedDatasetDataSource(DataSource):
 
 def _build_experiment_config() -> ExperimentConfig:
     """Build a typed config from module-level constants."""
-    if RUN_SOLVER_MODE not in {"both", "vanilla", "fast"}:
-        raise ValueError("RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast'.")
+    if RUN_SOLVER_MODE not in {"both", "vanilla", "fast", "benchmark"}:
+        raise ValueError(
+            "RUN_SOLVER_MODE must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+        )
     validated_run_solver_mode = cast(SolverMode, RUN_SOLVER_MODE)
 
     run_config = RunConfig(
@@ -298,8 +300,10 @@ def benchmark_kr_map_components_nd(
     store_full_projection_histories: bool = False,
 ) -> list[dict[str, Any]]:
     """Backward-compatible wrapper around the refactored core benchmark loop."""
-    if run_solver_mode not in {"both", "vanilla", "fast"}:
-        raise ValueError("run_solver_mode must be one of: 'both', 'vanilla', 'fast'.")
+    if run_solver_mode not in {"both", "vanilla", "fast", "benchmark"}:
+        raise ValueError(
+            "run_solver_mode must be one of: 'both', 'vanilla', 'fast', 'benchmark'."
+        )
     validated_run_solver_mode = cast(SolverMode, run_solver_mode)
 
     optimization_kwargs: dict[str, Any] = {
