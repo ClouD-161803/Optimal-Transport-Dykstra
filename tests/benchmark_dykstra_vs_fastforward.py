@@ -62,12 +62,12 @@ def run_benchmark():
     )
 
 if __name__ == "__main__":
-    SEED = int(time.time() * 1000) % 1000000
-    # SEED = 42
+    # SEED = int(time.time() * 1000) % 1000000
+    SEED = 42
     DIM = 2
     NUM_HALFSPACES = 20
-    MARGIN = 0.01
-    MAX_ITER = 200
+    MARGIN = 1e-2
+    MAX_ITER = 100
     MIN_ERROR = 1e-5
 
     run_benchmark()

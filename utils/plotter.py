@@ -122,6 +122,9 @@ class DykstraPlotter(_BasePlotter):
         for ax, label, result in zip(axes, labels, results):
             self._draw_convergence_panel(ax, result, iters, label)
 
+        for ax in axes[1:]:
+            ax.set_ylabel("")
+
         return self._save_and_show(fig, filename, show)
 
     def plot_outer_iteration_solver_comparison(
@@ -183,6 +186,8 @@ class DykstraPlotter(_BasePlotter):
                 f"Outer {outer_idx} - Fast-Forward Dykstra",
             )
 
+            axes[row_idx][1].set_ylabel("")
+
         filename = f"{filename_prefix}.png" if filename_prefix is not None else None
         return self._save_and_show(fig, filename, show)
 
@@ -243,7 +248,7 @@ class DykstraPlotter(_BasePlotter):
                 " and converged_errors set (use track_error=True)."
             )
 
-        self._style_axis(ax=ax, title=title, xlabel="Iteration", ylabel="Squared error")
+        self._style_axis(ax=ax, title=title, xlabel="Cycle", ylabel="Squared error")
         ax.grid(True, which="both", alpha=0.3)
 
         if not np.any(sq > 0):
