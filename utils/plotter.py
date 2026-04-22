@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+import math
 from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
@@ -883,6 +884,173 @@ class DistributionPlotter(_BasePlotter):
         default_filename = f"synthetic_distribution_SEED={seed}_M={m}{filename_label}.png"
         return self._save_and_show(
             fig, filename or default_filename, show
+        )
+
+    @staticmethod
+    def _select_progress_indices(
+        num_frames: int,
+        num_panels: int,
+        iteration_indices: Sequence[int] | None = None,
+        emphasize_early: float = 2.0,
+    ) -> list[int]:
+        if num_frames < 1:
+            raise ValueError("num_frames must be at least 1.")
+
+        if iteration_indices is not None:
+            selected: list[int] = []
+            seen: set[int] = set()
+            for raw in iteration_indices:
+                idx = int(raw)
+                if idx < 0 or idx >= num_frames:
+                    continue
+                if idx in seen:
+                    continue
+                seen.add(idx)
+                selected.append(idx)
+
+            if 0 not in seen:
+                selected.insert(0, 0)
+                seen.add(0)
+            final_idx = num_frames - 1
+            if final_idx not in seen:
+                selected.append(final_idx)
+            if len(selected) < 2:
+                return [0, final_idx]
+            return selected
+
+        if num_panels < 2:
+            raise ValueError("num_panels must be at least 2 when auto-selecting indices.")
+
+        warp = max(float(emphasize_early), 1e-6)
+        # Blend linear and early-biased spacing with a conservative cap so
+        # auto mode remains well distributed across the full trajectory.
+        blend = min(max((warp - 1.0) / max(warp, 1.0), 0.0), 0.25)
+        candidate_u = np.linspace(0.0, 1.0, max(num_panels * 20, num_panels))
+        warped_u = candidate_u**warp
+        mixed_u = (1.0 - blend) * candidate_u + blend * warped_u
+        candidate_idx = np.round(mixed_u * (num_frames - 1)).astype(int)
+        unique_sorted = np.unique(candidate_idx)
+        selected_auto = [int(v) for v in unique_sorted.tolist()]
+
+        if 0 not in selected_auto:
+            selected_auto.insert(0, 0)
+        if (num_frames - 1) not in selected_auto:
+            selected_auto.append(num_frames - 1)
+
+        if len(selected_auto) < num_panels:
+            fill = np.round(np.linspace(0, num_frames - 1, num_panels)).astype(int)
+            for idx in fill.tolist():
+                if idx not in selected_auto:
+                    selected_auto.append(int(idx))
+            selected_auto = sorted(set(selected_auto))
+
+        if len(selected_auto) > num_panels:
+            trimmed = selected_auto[: max(num_panels - 1, 1)]
+            if selected_auto[-1] not in trimmed:
+                trimmed.append(selected_auto[-1])
+            selected_auto = trimmed
+
+        if selected_auto[0] != 0:
+            selected_auto[0] = 0
+        if selected_auto[-1] != num_frames - 1:
+            selected_auto[-1] = num_frames - 1
+        return selected_auto
+
+    def plot_mapped_progress_grid(
+        self,
+        mapped_samples_sequence: np.ndarray,
+        solver_label: str,
+        outer_indices: Sequence[int] | None = None,
+        iteration_indices: Sequence[int] | None = None,
+        num_panels: int = 12,
+        ncols: int = 3,
+        emphasize_early: float = 2.0,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] = 6,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
+        panel_title_template: str = "PGD iteration: {iter}",
+        filename: str | None = None,
+        show: bool = True,
+    ) -> Figure:
+        """Plot mapped-distribution progress on a configurable grid.
+
+        If ``iteration_indices`` is provided, those indices are used (with initial
+        and final frames automatically enforced). Otherwise indices are sampled
+        automatically with denser coverage near the beginning of the run.
+        """
+        mapped_sequence = np.asarray(mapped_samples_sequence, dtype=float)
+        if mapped_sequence.ndim != 3 or mapped_sequence.shape[2] < 2:
+            raise ValueError("mapped_samples_sequence must have shape (num_frames, M, >=2).")
+
+        num_frames = int(mapped_sequence.shape[0])
+        selected_indices = self._select_progress_indices(
+            num_frames=num_frames,
+            num_panels=int(num_panels),
+            iteration_indices=iteration_indices,
+            emphasize_early=emphasize_early,
+        )
+
+        if outer_indices is not None and len(outer_indices) != num_frames:
+            raise ValueError(
+                "outer_indices must have the same length as mapped_samples_sequence."
+            )
+
+        n_panels = len(selected_indices)
+        ncols_eff = max(int(ncols), 1)
+        nrows = int(math.ceil(n_panels / ncols_eff))
+        fig, axes = plt.subplots(nrows, ncols_eff, figsize=(5.0 * ncols_eff, 4.2 * nrows))
+        axes_array = np.atleast_1d(axes).reshape(nrows, ncols_eff)
+
+        for panel_idx, frame_idx in enumerate(selected_indices):
+            row = panel_idx // ncols_eff
+            col = panel_idx % ncols_eff
+            ax = axes_array[row, col]
+            outer_iter_label = (
+                int(outer_indices[frame_idx]) if outer_indices is not None else int(frame_idx)
+            )
+            display_iter = outer_iter_label + 1
+            panel_title = panel_title_template.format(
+                iter=display_iter,
+                frame=frame_idx,
+                solver=solver_label,
+            )
+            self._draw_distribution_panel(
+                ax=ax,
+                samples=mapped_sequence[frame_idx, :, :2],
+                title=panel_title,
+                xlabel="$x_1$",
+                ylabel="$x_2$",
+                style="mapped",
+                xlim=xlim,
+                ylim=ylim,
+                grid_alpha=0.4,
+                draw_contours=draw_contours,
+                contour_bins=contour_bins,
+                contour_levels=contour_levels,
+                contour_smoothing_sigma=contour_smoothing_sigma,
+                contour_method=contour_method,
+                contour_kde_bw_factor=contour_kde_bw_factor,
+            )
+            if col != 0:
+                ax.set_ylabel("")
+            if row != (nrows - 1):
+                ax.set_xlabel("")
+
+        for panel_idx in range(n_panels, nrows * ncols_eff):
+            row = panel_idx // ncols_eff
+            col = panel_idx % ncols_eff
+            axes_array[row, col].axis("off")
+
+        fig.subplots_adjust(wspace=0.08, hspace=0.22)
+        return self._save_and_show(
+            fig,
+            filename or f"kr_map_progress_{solver_label.replace(' ', '_').lower()}.png",
+            show,
         )
 
     def _draw_distribution_panel(
