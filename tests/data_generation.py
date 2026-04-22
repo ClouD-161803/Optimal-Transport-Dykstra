@@ -14,18 +14,18 @@ from utils.data_generator import (
 from utils.plotter import DistributionPlotter
 
 if __name__ == "__main__":
-    M = 2500
-    SEED = 42
+    M = 1000
+    SEED = 43
     NUM_DIMENSIONS = 2
-    PLOT_SIZE = 20.0
+    PLOT_SIZE = 10.0
     DISTRIBUTION_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
     DISTRIBUTION_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
-    # GVM tuned to resemble the paper's last-row thin, stretched U-shape (panels e/f)
+    # GVM tuned for a milder U-shape so contour behaviour is easier to read.
     GVM_ALPHA = -3.2
     GVM_BETA = np.array([0.0, 0.0], dtype=float)
-    GVM_GAMMA = np.array([[4.2, 0.0], [0.0, 0.0]], dtype=float)
-    GVM_KAPPA = 12.0
+    GVM_GAMMA = np.array([[2.0, 0.0], [0.0, 0.0]], dtype=float)
+    GVM_KAPPA = 3.0
     LINE_SIGMA = 0.15
 
     generator = GVMDataGenerator(

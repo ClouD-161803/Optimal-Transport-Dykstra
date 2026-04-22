@@ -9,13 +9,23 @@ Provides dedicated plotter classes for disjoint plotting domains:
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
+try:
+    from scipy.ndimage import gaussian_filter
+except ImportError:  # pragma: no cover - scipy is expected in normal runs
+    gaussian_filter = None
+try:
+    from scipy.stats import gaussian_kde
+except ImportError:  # pragma: no cover - scipy is expected in normal runs
+    gaussian_kde = None
 
 from .projection_result import ProjectionResult
 
@@ -23,6 +33,20 @@ TITLE_FONT_SIZE = 20
 AXIS_LABEL_FONT_SIZE = 18
 TICK_LABEL_FONT_SIZE = 16
 LEGEND_FONT_SIZE = 16
+
+
+@dataclass(frozen=True)
+class DistributionStyle:
+    """Style bundle for drawing a particle distribution panel."""
+
+    point_color: str
+    point_alpha: float
+    point_size: int
+    point_edge_color: str
+    contour_cmap: Any
+    contour_levels: int | Sequence[float]
+    contour_alpha: float
+    contour_lw: float
 
 
 class _BasePlotter:
@@ -285,6 +309,183 @@ class DistributionPlotter(_BasePlotter):
     """Plotter for sample-distribution visualisations.
     """
 
+    def __init__(self, output_dir: str, dpi: int = 150) -> None:
+        super().__init__(output_dir=output_dir, dpi=dpi)
+        self.styles = self._build_distribution_styles()
+
+    @staticmethod
+    def _build_distribution_styles() -> dict[str, DistributionStyle]:
+        reference_cmap = LinearSegmentedColormap.from_list(
+            "reference_gray_contours",
+            ["#E5E5E5", "#8F8F8F", "#2E2E2E"],
+        )
+        sheared_cmap = LinearSegmentedColormap.from_list(
+            "sheared_orange_yellow_contours",
+            ["#F1C40F", "#E67E22", "#B22222"],
+        )
+        mapped_cmap = LinearSegmentedColormap.from_list(
+            "mapped_blue_green_contours",
+            ["#27AE60", "#16A085", "#2874A6", "#1F4EAA"],
+        )
+        return {
+            "reference": DistributionStyle(
+                point_color="black",
+                point_alpha=0.33,
+                point_size=16,
+                point_edge_color="none",
+                contour_cmap=reference_cmap,
+                contour_levels=7,
+                contour_alpha=0.95,
+                contour_lw=1.1,
+            ),
+            "sheared": DistributionStyle(
+                point_color="#C0392B",
+                point_alpha=0.34,
+                point_size=16,
+                point_edge_color="none",
+                contour_cmap=sheared_cmap,
+                contour_levels=7,
+                contour_alpha=0.95,
+                contour_lw=1.15,
+            ),
+            "mapped": DistributionStyle(
+                point_color="#2166AC",
+                point_alpha=0.34,
+                point_size=16,
+                point_edge_color="none",
+                contour_cmap=mapped_cmap,
+                contour_levels=7,
+                contour_alpha=0.95,
+                contour_lw=1.15,
+            ),
+        }
+
+    def _resolve_style(
+        self,
+        style: str | DistributionStyle | None,
+        fallback_key: str = "reference",
+    ) -> DistributionStyle:
+        if isinstance(style, DistributionStyle):
+            return style
+        if isinstance(style, str):
+            if style not in self.styles:
+                raise ValueError(f"Unknown distribution style: {style}")
+            return self.styles[style]
+        return self.styles[fallback_key]
+
+    @staticmethod
+    def _resolve_limits(
+        samples: np.ndarray,
+        xlim: tuple[float, float] | None,
+        ylim: tuple[float, float] | None,
+        margin_ratio: float = 0.08,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        if xlim is not None and ylim is not None:
+            return xlim, ylim
+
+        x = samples[:, 0]
+        y = samples[:, 1]
+        if xlim is None:
+            xmin, xmax = float(np.min(x)), float(np.max(x))
+            xspan = xmax - xmin
+            if xspan <= 1e-12:
+                xspan = 1.0
+            xmargin = margin_ratio * xspan
+            xlim_resolved = (xmin - xmargin, xmax + xmargin)
+        else:
+            xlim_resolved = xlim
+
+        if ylim is None:
+            ymin, ymax = float(np.min(y)), float(np.max(y))
+            yspan = ymax - ymin
+            if yspan <= 1e-12:
+                yspan = 1.0
+            ymargin = margin_ratio * yspan
+            ylim_resolved = (ymin - ymargin, ymax + ymargin)
+        else:
+            ylim_resolved = ylim
+        return xlim_resolved, ylim_resolved
+
+    def _estimate_density_grid(
+        self,
+        samples: np.ndarray,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        bins: int = 80,
+        smooth_sigma: float = 1.0,
+        method: str = "kde",
+        kde_bw_factor: float = 1.0,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        resolved_xlim, resolved_ylim = self._resolve_limits(
+            samples=samples, xlim=xlim, ylim=ylim
+        )
+        effective_method = method.strip().lower()
+        if effective_method == "kde" and gaussian_kde is not None:
+            nx = max(int(bins), 140)
+            ny = max(int(bins), 140)
+            x_grid = np.linspace(resolved_xlim[0], resolved_xlim[1], nx)
+            y_grid = np.linspace(resolved_ylim[0], resolved_ylim[1], ny)
+            xx, yy = np.meshgrid(x_grid, y_grid)
+            coords = np.vstack([xx.ravel(), yy.ravel()])
+            kde = gaussian_kde(samples[:, :2].T)
+            factor_array = np.asarray(getattr(kde, "factor", 1.0), dtype=float)
+            base_factor = float(factor_array.reshape(-1)[0])
+            bw_factor = max(float(kde_bw_factor), 1e-3)
+            kde.set_bandwidth(bw_method=base_factor * bw_factor)
+            zz = kde(coords).reshape(xx.shape)
+            return xx, yy, zz
+
+        hist, x_edges, y_edges = np.histogram2d(
+            samples[:, 0],
+            samples[:, 1],
+            bins=bins,
+            range=[resolved_xlim, resolved_ylim],
+            density=False,
+        )
+        z = hist.T
+        sigma = max(float(smooth_sigma), 0.0)
+        if sigma > 0.0 and gaussian_filter is not None:
+            z = gaussian_filter(z, sigma=sigma)
+        x_centers = 0.5 * (x_edges[:-1] + x_edges[1:])
+        y_centers = 0.5 * (y_edges[:-1] + y_edges[1:])
+        xx, yy = np.meshgrid(x_centers, y_centers)
+        return xx, yy, z
+
+    def _draw_density_contours(
+        self,
+        ax: Axes,
+        xx: np.ndarray,
+        yy: np.ndarray,
+        zz: np.ndarray,
+        style: DistributionStyle,
+        contour_levels: int | Sequence[float] | None = None,
+    ) -> Any | None:
+        zmax = float(np.max(zz))
+        if zmax <= 0.0:
+            return None
+
+        levels = contour_levels if contour_levels is not None else style.contour_levels
+        if isinstance(levels, int):
+            num_levels = max(2, levels)
+            # Stable peak-relative spacing: avoids morphing while still
+            # capturing moderate tails for sheared distributions.
+            min_level = zmax * 0.06
+            max_level = zmax * 0.90
+            if max_level <= min_level:
+                return None
+            levels = np.linspace(min_level, max_level, num_levels)
+
+        return ax.contour(
+            xx,
+            yy,
+            zz,
+            levels=levels,
+            cmap=style.contour_cmap,
+            linewidths=style.contour_lw,
+            alpha=style.contour_alpha,
+            zorder=2,
+        )
+
     def plot_kr_map_distribution_single_solver(
         self,
         normal_samples: np.ndarray,
@@ -294,6 +495,12 @@ class DistributionPlotter(_BasePlotter):
         panel_titles: tuple[str, str, str] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] = 6,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -308,16 +515,22 @@ class DistributionPlotter(_BasePlotter):
             )
 
         panels = [
-            (normal_samples, panel_titles[0], "tab:blue"),
-            (synthetic_samples, panel_titles[1], "tab:red"),
-            (mapped_samples, panel_titles[2], "tab:green"),
+            (normal_samples, panel_titles[0], "reference"),
+            (synthetic_samples, panel_titles[1], "sheared"),
+            (mapped_samples, panel_titles[2], "mapped"),
         ]
 
-        for ax, (samples, title, color) in zip(axes, panels):
+        for ax, (samples, title, style_key) in zip(axes, panels):
             self._draw_distribution_panel(
                 ax=ax, samples=samples, title=title,
-                xlabel="$x_1$", ylabel="$x_2$", color=color,
-                s=16, xlim=xlim, ylim=ylim, grid_alpha=0.4,
+                xlabel="$x_1$", ylabel="$x_2$", style=style_key,
+                xlim=xlim, ylim=ylim, grid_alpha=0.4,
+                draw_contours=draw_contours,
+                contour_bins=contour_bins,
+                contour_levels=contour_levels,
+                contour_smoothing_sigma=contour_smoothing_sigma,
+                contour_method=contour_method,
+                contour_kde_bw_factor=contour_kde_bw_factor,
             )
 
         return self._save_and_show(
@@ -333,6 +546,12 @@ class DistributionPlotter(_BasePlotter):
         panel_titles: tuple[str, str, str, str] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] = 6,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -356,17 +575,23 @@ class DistributionPlotter(_BasePlotter):
             )
 
         panels = [
-            (normal_samples, panel_titles[0], "tab:blue"),
-            (synthetic_samples, panel_titles[1], "tab:red"),
-            (vanilla_mapped_samples, panel_titles[2], "tab:green"),
-            (fast_mapped_samples, panel_titles[3], "tab:purple"),
+            (normal_samples, panel_titles[0], "reference"),
+            (synthetic_samples, panel_titles[1], "sheared"),
+            (vanilla_mapped_samples, panel_titles[2], "mapped"),
+            (fast_mapped_samples, panel_titles[3], "mapped"),
         ]
 
-        for ax, (samples, title, color) in zip(axes.flatten(), panels):
+        for ax, (samples, title, style_key) in zip(axes.flatten(), panels):
             self._draw_distribution_panel(
                 ax=ax, samples=samples, title=title,
-                xlabel="$x_1$", ylabel="$x_2$", color=color,
-                s=16, xlim=xlim, ylim=ylim, grid_alpha=0.4,
+                xlabel="$x_1$", ylabel="$x_2$", style=style_key,
+                xlim=xlim, ylim=ylim, grid_alpha=0.4,
+                draw_contours=draw_contours,
+                contour_bins=contour_bins,
+                contour_levels=contour_levels,
+                contour_smoothing_sigma=contour_smoothing_sigma,
+                contour_method=contour_method,
+                contour_kde_bw_factor=contour_kde_bw_factor,
             )
 
         return self._save_and_show(
@@ -383,6 +608,12 @@ class DistributionPlotter(_BasePlotter):
         panel_titles: tuple[str, str, str] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] = 6,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
         filename_prefix: str | None = None,
         fps: int = 12,
         save_mp4: bool = True,
@@ -431,11 +662,16 @@ class DistributionPlotter(_BasePlotter):
             title=panel_titles[0],
             xlabel="$x_1$",
             ylabel="$x_2$",
-            color="tab:blue",
-            s=16,
+            style="reference",
             xlim=xlim,
             ylim=ylim,
             grid_alpha=0.4,
+            draw_contours=draw_contours,
+            contour_bins=contour_bins,
+            contour_levels=contour_levels,
+            contour_smoothing_sigma=contour_smoothing_sigma,
+            contour_method=contour_method,
+            contour_kde_bw_factor=contour_kde_bw_factor,
         )
         self._draw_distribution_panel(
             ax=axes[1],
@@ -443,22 +679,48 @@ class DistributionPlotter(_BasePlotter):
             title=panel_titles[1],
             xlabel="$x_1$",
             ylabel="$x_2$",
-            color="tab:red",
-            s=16,
+            style="sheared",
             xlim=xlim,
             ylim=ylim,
             grid_alpha=0.4,
+            draw_contours=draw_contours,
+            contour_bins=contour_bins,
+            contour_levels=contour_levels,
+            contour_smoothing_sigma=contour_smoothing_sigma,
+            contour_method=contour_method,
+            contour_kde_bw_factor=contour_kde_bw_factor,
         )
 
         mapped_ax = axes[2]
+        mapped_style = self._resolve_style("mapped")
         mapped_scatter = mapped_ax.scatter(
             mapped_sequence[0, :, 0],
             mapped_sequence[0, :, 1],
-            alpha=0.5,
-            color="tab:green",
-            edgecolor="k",
-            s=16,
+            alpha=mapped_style.point_alpha,
+            color=mapped_style.point_color,
+            edgecolor=mapped_style.point_edge_color,
+            s=mapped_style.point_size,
+            zorder=3,
         )
+        mapped_contours = None
+        if draw_contours:
+            xx, yy, zz = self._estimate_density_grid(
+                samples=mapped_sequence[0, :, :2],
+                xlim=xlim,
+                ylim=ylim,
+                bins=contour_bins,
+                smooth_sigma=contour_smoothing_sigma,
+                method=contour_method,
+                kde_bw_factor=contour_kde_bw_factor,
+            )
+            mapped_contours = self._draw_density_contours(
+                ax=mapped_ax,
+                xx=xx,
+                yy=yy,
+                zz=zz,
+                style=mapped_style,
+                contour_levels=contour_levels,
+            )
 
         def _title_for_frame(frame_idx: int) -> str:
             outer_idx = resolved_outer_indices[frame_idx]
@@ -480,7 +742,29 @@ class DistributionPlotter(_BasePlotter):
         mapped_ax.set_aspect("equal", adjustable="box")
 
         def _update(frame_idx: int) -> tuple[Any, ...]:
+            nonlocal mapped_contours
             mapped_scatter.set_offsets(mapped_sequence[frame_idx, :, :2])
+            if mapped_contours is not None:
+                for collection in mapped_contours.collections:
+                    collection.remove()
+            if draw_contours:
+                xx, yy, zz = self._estimate_density_grid(
+                    samples=mapped_sequence[frame_idx, :, :2],
+                    xlim=xlim,
+                    ylim=ylim,
+                    bins=contour_bins,
+                    smooth_sigma=contour_smoothing_sigma,
+                    method=contour_method,
+                    kde_bw_factor=contour_kde_bw_factor,
+                )
+                mapped_contours = self._draw_density_contours(
+                    ax=mapped_ax,
+                    xx=xx,
+                    yy=yy,
+                    zz=zz,
+                    style=mapped_style,
+                    contour_levels=contour_levels,
+                )
             mapped_ax.set_title(_title_for_frame(frame_idx), fontsize=TITLE_FONT_SIZE)
             return (mapped_scatter,)
 
@@ -549,6 +833,12 @@ class DistributionPlotter(_BasePlotter):
         sheared_title: str | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] = 6,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
         filename: str | None = None,
         show: bool = True,
     ) -> Figure:
@@ -570,14 +860,26 @@ class DistributionPlotter(_BasePlotter):
         self._draw_distribution_panel(
             ax=ax1, samples=reference_samples,
             title=effective_reference_title,
-            xlabel="$z_1$", ylabel="$z_2$", color="blue",
+            xlabel="$z_1$", ylabel="$z_2$", style="reference",
             xlim=xlim, ylim=ylim,
+            draw_contours=draw_contours,
+            contour_bins=contour_bins,
+            contour_levels=contour_levels,
+            contour_smoothing_sigma=contour_smoothing_sigma,
+            contour_method=contour_method,
+            contour_kde_bw_factor=contour_kde_bw_factor,
         )
         self._draw_distribution_panel(
             ax=ax2, samples=sheared_samples,
             title=effective_sheared_title,
-            xlabel="$x_1$", ylabel="$x_2$", color="red",
+            xlabel="$x_1$", ylabel="$x_2$", style="sheared",
             xlim=xlim, ylim=ylim,
+            draw_contours=draw_contours,
+            contour_bins=contour_bins,
+            contour_levels=contour_levels,
+            contour_smoothing_sigma=contour_smoothing_sigma,
+            contour_method=contour_method,
+            contour_kde_bw_factor=contour_kde_bw_factor,
         )
 
         default_filename = f"synthetic_distribution_SEED={seed}_M={m}{filename_label}.png"
@@ -592,20 +894,47 @@ class DistributionPlotter(_BasePlotter):
         title: str,
         xlabel: str,
         ylabel: str,
-        color: str,
-        s: int = 20,
+        style: str | DistributionStyle | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
         grid_alpha: float = 0.6,
+        draw_contours: bool = True,
+        contour_bins: int = 80,
+        contour_levels: int | Sequence[float] | None = None,
+        contour_smoothing_sigma: float = 1.0,
+        contour_method: str = "kde",
+        contour_kde_bw_factor: float = 1.35,
     ) -> None:
+        resolved_style = self._resolve_style(style=style, fallback_key="reference")
+        samples_array = np.asarray(samples, dtype=float)
+        if draw_contours:
+            xx, yy, zz = self._estimate_density_grid(
+                samples=samples_array[:, :2],
+                xlim=xlim,
+                ylim=ylim,
+                bins=contour_bins,
+                smooth_sigma=contour_smoothing_sigma,
+                method=contour_method,
+                kde_bw_factor=contour_kde_bw_factor,
+            )
+            self._draw_density_contours(
+                ax=ax,
+                xx=xx,
+                yy=yy,
+                zz=zz,
+                style=resolved_style,
+                contour_levels=contour_levels,
+            )
         ax.scatter(
-            samples[:, 0],
-            samples[:, 1],
-            alpha=0.5,
-            color=color,
-            edgecolor="k",
-            s=s,
+            samples_array[:, 0],
+            samples_array[:, 1],
+            alpha=resolved_style.point_alpha,
+            color=resolved_style.point_color,
+            edgecolor=resolved_style.point_edge_color,
+            s=resolved_style.point_size,
+            zorder=3,
         )
+
         self._style_axis(ax=ax, title=title, xlabel=xlabel, ylabel=ylabel)
         ax.grid(True, linestyle="--", alpha=grid_alpha)
         ax.set_aspect("equal", adjustable="box")
