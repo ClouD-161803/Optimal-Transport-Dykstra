@@ -466,14 +466,12 @@ class DistributionPlotter(_BasePlotter):
 
         levels = contour_levels if contour_levels is not None else style.contour_levels
         if isinstance(levels, int):
-            num_levels = max(2, levels)
-            # Stable peak-relative spacing: avoids morphing while still
-            # capturing moderate tails for sheared distributions.
-            min_level = zmax * 0.06
-            max_level = zmax * 0.90
+            levels = max(2, levels)
+            min_level = zmax * 0.10
+            max_level = zmax * 0.95
             if max_level <= min_level:
-                return None
-            levels = np.linspace(min_level, max_level, num_levels)
+                min_level = zmax * 0.40
+            levels = np.linspace(min_level, max_level, levels)
 
         return ax.contour(
             xx,

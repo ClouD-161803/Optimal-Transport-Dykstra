@@ -33,7 +33,7 @@ from utils.optimal_transport import Basis, HermiteBasis, KRMap
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
-RUN_SOLVER_MODE: str = "benchmark"  # options: "both", "vanilla", "fast", "benchmark"
+RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast", "benchmark"
 SAVE_FULL_RUN_ITERATES: bool = False
 SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = False
 ENFORCE_MATCHING: bool = False
@@ -43,13 +43,13 @@ PLOT_DYKSTRA_ITERATES: bool = False
 PLOT_DYKSTRA_OUTER_ITERATIONS: list[int] | None = (
     [0, -2, -1] if PLOT_DYKSTRA_ITERATES else None
 )
-PLOT_DISTRIBUTIONS: bool = False
+PLOT_DISTRIBUTIONS: bool = True
 PLOT_SIZE: float = 7.0 if PLOT_DISTRIBUTIONS else 0.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 162977
+SEED: int = 0
 NUM_DIMENSIONS: int = 2
 NUM_PARTICLES: int = 500
 
@@ -60,14 +60,14 @@ GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
-BASE_INNER_ITER: int = 10
-MAX_INNER_ITERS: int = 100
+BASE_INNER_ITER: int = 1
+MAX_INNER_ITERS: int = 10
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
 BATCH_SIZE: int | None = 100
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 0.075
+LEARNING_RATE: float = 0.1
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
