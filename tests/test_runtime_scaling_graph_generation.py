@@ -29,8 +29,8 @@ BENCHMARK_DIR = os.path.join(
 SCALING_OUTPUT_DIR = os.path.join(
     PROJECT_ROOT,
     "results",
-    "data_generation",
-    "latex_visual",
+    "full_experiment_benchmarks",
+    "solver_runtime_scaling",
 )
 
 
