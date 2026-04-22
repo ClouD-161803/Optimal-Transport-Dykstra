@@ -23,9 +23,11 @@ from core.runner import (
 )
 from utils.data_generator import (
     BoomerangShearFunction,
+    CubicShearFunction,
     DataGenerator,
     GVMDataGenerator,
     RoughLineShearFunction,
+    XShapedShearFunction,
 )
 from utils.optimal_transport import Basis, HermiteBasis, KRMap
 
@@ -100,6 +102,12 @@ DATA_GENERATOR = DataGenerator(
 )
 # DATA_GENERATOR = DataGenerator(
 #     shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+# )
+# DATA_GENERATOR = DataGenerator(
+#     shear_function=CubicShearFunction(strength=0.7),  # Suggested DEGREE: 3
+# )
+# DATA_GENERATOR = DataGenerator(
+#     shear_function=XShapedShearFunction(strength=1.2),  # Suggested DEGREE: 2
 # )
 
 DEGREE: int = 2
