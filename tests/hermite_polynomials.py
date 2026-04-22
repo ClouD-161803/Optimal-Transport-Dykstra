@@ -14,10 +14,10 @@ def test_hermite_polynomials():
 
     plt.figure(figsize=(10, 4))
     for j in range(DEGREE + 1):
-        plt.plot(x, Psi[:, j], label=r"$\Psi_{%d}(y)$" % j)
+        plt.plot(x, Psi[:, j], label=r"$\mathrm{He}_{%d}(y)$" % j)
     # plt.title(f"Hermite polynomials up to degree {DEGREE}", fontsize=20)
     plt.xlabel(r"y", fontsize=16)
-    plt.ylabel(r"$\Psi_j(y)$", fontsize=16)
+    plt.ylabel(r"$\mathrm{He}_j(y)$", fontsize=16)
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
