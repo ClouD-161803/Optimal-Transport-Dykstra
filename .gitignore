@@ -217,4 +217,4 @@ __marimo__/
 full_run_iterates/
 bin/
 solver_runtime_benchmarks/
-solver_runtime_scaling/
+results/full_experiment_benchmarks/solver_runtime_scaling/*.csv

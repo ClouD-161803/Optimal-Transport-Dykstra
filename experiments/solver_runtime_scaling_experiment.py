@@ -8,6 +8,7 @@ It saves both raw and aggregated tables plus summary plots.
 from __future__ import annotations
 
 import csv
+import io
 import json
 import os
 import sys
@@ -27,24 +28,24 @@ import core.runner as runner_module
 from core.runner import build_identity_initial_guesses, run_synthetic_experiment
 from utils.data_generator import LayeredBoomerangShearFunction, DataGenerator
 from utils.optimal_transport import Basis, HermiteBasis, KRMap
-from utils.plotter import BenchmarkPlotter
+from utils.plotter import BenchmarkPlotter, DistributionPlotter
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Sweep controls
-DIMENSIONS: list[int] = [2, 3, 4, 5, 6]
+DIMENSIONS: list[int] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30, 40, 50]
 SEEDS: list[int] = [111, 222, 333]
-NUM_PARTICLES: int = 1000
+NUM_PARTICLES: int = 500
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 300
+MAX_OUTER_ITER: int = 1000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
 
 # Inexact projection: Inner iters = BASE_INNER_ITER * (outer_iter ** INEXACT_POWER)
 BASE_INNER_ITER: int = 1
-MAX_INNER_ITERS: int = 10
+MAX_INNER_ITERS: int = 5
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
@@ -76,12 +77,12 @@ DATA_GENERATOR = DataGenerator(
 SCALING_OUTPUT_DIR = os.path.join(
     PROJECT_ROOT,
     "results",
-    "full_experiment_benchmarks",
-    "solver_runtime_scaling",
+    "data_generation",
+    "latex_visual",
 )
 
 # Suppress specific solvers from runtime-scaling benchmark runs (labels as printed).
-SUPPRESSED_SOLVER_LABELS: set[str] = {"qp_scipy_slsqp"}
+SUPPRESSED_SOLVER_LABELS: set[str] = {"qp_scipy_slsqp", "qp_quadprog"}
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,17 @@ def _temporarily_filter_benchmark_qp_backends() -> Any:
         yield
     finally:
         runner_module.get_registered_qp_projection_solvers = original
+
+
+@contextmanager
+def _suppress_component_output() -> Any:
+    """Temporarily suppress stdout to hide component printing during runs."""
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
 
 
 def _build_experiment_config(seed: int, num_dimensions: int) -> ExperimentConfig:
@@ -323,7 +335,8 @@ def run_runtime_scaling_experiment() -> dict[str, str]:
         for num_dimensions in DIMENSIONS:
             for seed in SEEDS:
                 print(f"\n=== Scaling run: dim={num_dimensions}, seed={seed} ===")
-                artifact = _run_single(seed=seed, num_dimensions=num_dimensions)
+                with _suppress_component_output():
+                    artifact = _run_single(seed=seed, num_dimensions=num_dimensions)
                 print(f"Saved per-run benchmark JSON: {artifact.benchmark_json_path}")
                 artifacts.append(artifact)
 
