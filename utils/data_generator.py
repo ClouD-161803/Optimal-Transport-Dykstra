@@ -89,6 +89,41 @@ class RoughLineShearFunction(ShearFunction):
         return zeta[:, 0] - (1.0 - self.sigma) * zeta[:, 1]
 
 
+class XShapedShearFunction(ShearFunction):
+    """Creates X-shaped distribution with two crossing diagonal lines.
+
+    Pulls particles toward y ≈ x when x and y have the same sign,
+    and toward y ≈ -x when x and y have opposite signs, forming an X pattern.
+    """
+
+    def __init__(self, strength: float = 0.8) -> None:
+        self.strength = float(strength)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        x = zeta[:, 0]
+        y = zeta[:, 1]
+        # Product x*y encodes the diagonal structure:
+        # Same sign (x*y > 0) → pull toward y = x
+        # Opposite sign (x*y < 0) → pull toward y = -x
+        return self.strength * x * y
+
+
+class CubicShearFunction(ShearFunction):
+    """Creates an S-shaped or cubic-wave distribution.
+
+    Uses a cubic polynomial shear that creates an elongated,
+    wave-like or S-shaped pattern in the sheared distribution.
+    """
+
+    def __init__(self, strength: float = 0.7) -> None:
+        self.strength = float(strength)
+
+    def shear(self, zeta: np.ndarray) -> np.ndarray:
+        x = zeta[:, 0]
+        # Cubic function creates S-curve pattern
+        return self.strength * (x**3 - x)
+
+
 class LayeredBoomerangShearFunction(ShearFunction):
     """Deterministic multi-output quadratic shear for higher dimensions.
 
