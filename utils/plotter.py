@@ -548,11 +548,21 @@ class DistributionPlotter(_BasePlotter):
             )
         for ax in axes[1:]:
             ax.set_ylabel("")
-        fig.subplots_adjust(wspace=0.18)
 
-        return self._save_and_show(
-            fig, filename or "kr_map_distribution_single_solver.png", show
+        fig.subplots_adjust(
+            top=0.871,
+            bottom=0.121,
+            left=0.077,
+            right=0.981,
+            hspace=0.200,
+            wspace=0.215,
         )
+        save_name = filename or "kr_map_distribution_single_solver.png"
+        if save_name is not None:
+            fig.savefig(os.path.join(self.output_dir, save_name), dpi=self.dpi)
+        if show:
+            plt.show()
+        return fig
 
     def plot_kr_map_distribution_comparison(
         self,
