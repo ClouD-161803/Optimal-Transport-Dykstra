@@ -44,11 +44,11 @@ PLOT_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 PLOT_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
 # Optional explicit frame indices (in mapped sequence space). Set to None to disable.
-EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 8, 9, 10, 20, 50, 200, 1000, 2000]
-# Optional substring filter for selecting a specific run JSON by filename.
+EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 4, 8, 10, 15, 20, 100, 300, 500]
+# Optional substring filter for selecting a specific run JSON by filename.s
 # Examples: "SEED=42", "TS=20260422-101530", "MODE=fast".
 # Keep as None to default to latest run.
-RUN_FILENAME_FILTER: str | None = "SEED=2222"
+RUN_FILENAME_FILTER: str | None = "SEED=5432"
 
 
 def _latest_full_run_json(path: str, filename_filter: str | None = None) -> str:
