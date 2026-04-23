@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 import math
+import textwrap
 from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
@@ -44,6 +45,7 @@ class DistributionStyle:
     point_alpha: float
     point_size: int
     point_edge_color: str
+    point_edge_width: float
     contour_cmap: Any
     contour_levels: int | Sequence[float]
     contour_alpha: float
@@ -318,7 +320,7 @@ class DistributionPlotter(_BasePlotter):
     def _build_distribution_styles() -> dict[str, DistributionStyle]:
         reference_cmap = LinearSegmentedColormap.from_list(
             "reference_gray_contours",
-            ["#E5E5E5", "#8F8F8F", "#2E2E2E"],
+            ["#8A8A8A", "#555555", "#1A1A1A"],
         )
         sheared_cmap = LinearSegmentedColormap.from_list(
             "sheared_orange_yellow_contours",
@@ -333,7 +335,8 @@ class DistributionPlotter(_BasePlotter):
                 point_color="black",
                 point_alpha=0.33,
                 point_size=16,
-                point_edge_color="none",
+                point_edge_color="black",
+                point_edge_width=0.45,
                 contour_cmap=reference_cmap,
                 contour_levels=7,
                 contour_alpha=0.95,
@@ -343,7 +346,8 @@ class DistributionPlotter(_BasePlotter):
                 point_color="#C0392B",
                 point_alpha=0.34,
                 point_size=16,
-                point_edge_color="none",
+                point_edge_color="black",
+                point_edge_width=0.45,
                 contour_cmap=sheared_cmap,
                 contour_levels=7,
                 contour_alpha=0.95,
@@ -353,7 +357,8 @@ class DistributionPlotter(_BasePlotter):
                 point_color="#2166AC",
                 point_alpha=0.34,
                 point_size=16,
-                point_edge_color="none",
+                point_edge_color="black",
+                point_edge_width=0.45,
                 contour_cmap=mapped_cmap,
                 contour_levels=7,
                 contour_alpha=0.95,
@@ -373,6 +378,13 @@ class DistributionPlotter(_BasePlotter):
                 raise ValueError(f"Unknown distribution style: {style}")
             return self.styles[style]
         return self.styles[fallback_key]
+
+    @staticmethod
+    def _wrap_panel_title(title: str, width: int = 28) -> str:
+        text = str(title).strip()
+        if text == "":
+            return text
+        return textwrap.fill(text, width=width, break_long_words=False)
 
     @staticmethod
     def _resolve_limits(
@@ -512,11 +524,14 @@ class DistributionPlotter(_BasePlotter):
                 "Synthetic distribution",
                 f"Mapped with {solver_label}",
             )
+        wrapped_titles = tuple(
+            self._wrap_panel_title(t, width=28) for t in panel_titles
+        )
 
         panels = [
-            (normal_samples, panel_titles[0], "reference"),
-            (synthetic_samples, panel_titles[1], "sheared"),
-            (mapped_samples, panel_titles[2], "mapped"),
+            (normal_samples, wrapped_titles[0], "reference"),
+            (synthetic_samples, wrapped_titles[1], "sheared"),
+            (mapped_samples, wrapped_titles[2], "mapped"),
         ]
 
         for ax, (samples, title, style_key) in zip(axes, panels):
@@ -531,6 +546,9 @@ class DistributionPlotter(_BasePlotter):
                 contour_method=contour_method,
                 contour_kde_bw_factor=contour_kde_bw_factor,
             )
+        for ax in axes[1:]:
+            ax.set_ylabel("")
+        fig.subplots_adjust(wspace=0.18)
 
         return self._save_and_show(
             fig, filename or "kr_map_distribution_single_solver.png", show
@@ -698,6 +716,7 @@ class DistributionPlotter(_BasePlotter):
             alpha=mapped_style.point_alpha,
             color=mapped_style.point_color,
             edgecolor=mapped_style.point_edge_color,
+            linewidths=mapped_style.point_edge_width,
             s=mapped_style.point_size,
             zorder=3,
         )
@@ -1097,6 +1116,7 @@ class DistributionPlotter(_BasePlotter):
             alpha=resolved_style.point_alpha,
             color=resolved_style.point_color,
             edgecolor=resolved_style.point_edge_color,
+            linewidths=resolved_style.point_edge_width,
             s=resolved_style.point_size,
             zorder=3,
         )
