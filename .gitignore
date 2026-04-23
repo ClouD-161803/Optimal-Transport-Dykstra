@@ -191,6 +191,7 @@ cython_debug/
 # Claude
 tmpclaude-*
 nul
+.claude/
 
 # Codex
 pytest-cache-files-*/
