@@ -44,7 +44,7 @@ PLOT_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 PLOT_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
 # Optional explicit frame indices (in mapped sequence space). Set to None to disable.
-EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 160, 200, 300, 500, 700, 1000, 2000, 3000]
+EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 13, 160, 300, 500, 700, 1000, 2000, 3000]
 # Optional substring filter for selecting a specific run JSON by filename.
 # Examples: "SEED=42", "TS=20260422-101530", "MODE=fast".
 # Keep as None to default to latest run.
