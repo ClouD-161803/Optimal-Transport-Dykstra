@@ -42,7 +42,7 @@ JSON_FILENAME = f"kr2d_full_run_iterates_SEED={SEED}_M={M}_PGDITERS={PGDITERS}_D
 NPZ_PATH = os.path.join(RESULTS_DIR, NPZ_FILENAME)
 JSON_PATH = os.path.join(RESULTS_DIR, JSON_FILENAME)
 
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "data_generation")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "full_experiment_benchmarks", "distribution_plots")
 
 # KR map settings (must match the experimental config)
 DEGREE: int = 2
