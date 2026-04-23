@@ -38,17 +38,17 @@ OUTPUT_DIR = os.path.join(
 
 SOLVER_LABEL = "fast"  # "fast" or "vanilla"
 NUM_DIMENSIONS = 2
-KR_DEGREE = 2
-PLOT_SIZE = 7.0
+KR_DEGREE = 3
+PLOT_SIZE = 10.0
 PLOT_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 PLOT_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
 # Optional explicit frame indices (in mapped sequence space). Set to None to disable.
-EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 2, 3, 5, 8, 13, 21, 34, 144, 300, 1000]
+EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 160, 200, 300, 500, 700, 1000, 2000, 3000]
 # Optional substring filter for selecting a specific run JSON by filename.
 # Examples: "SEED=42", "TS=20260422-101530", "MODE=fast".
 # Keep as None to default to latest run.
-RUN_FILENAME_FILTER: str | None = "kr2d_full_run_iterates_SEED=1234567_M=1000_PGDITERS=1000"
+RUN_FILENAME_FILTER: str | None = "SEED=507"
 
 
 def _latest_full_run_json(path: str, filename_filter: str | None = None) -> str:
