@@ -26,7 +26,7 @@ DYKSTRA_ITERS: str = "1_10"
 MODE: str = "fast"
 TIMESTAMP: str = "20260412-001825"
 
-PLOT_SIZE: float = 7.0
+PLOT_SIZE: float = 5.0
 X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
@@ -137,7 +137,7 @@ def plot_kr_map_results(
         mapped_samples=mapped_samples,
         solver_label="Fast Dykstra",
         panel_titles=(
-            "Reference Standard Normal",
+            "Reference standard normal",
             f"Synthetic distribution ({shear_label})",
             "Mapped with KR map",
         ),
