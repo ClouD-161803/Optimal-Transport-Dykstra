@@ -28,7 +28,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast", "benchmark"
-SAVE_FULL_RUN_ITERATES: bool = True
+SAVE_FULL_RUN_ITERATES: bool = False
 SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
 ENFORCE_MATCHING: bool = False
 
