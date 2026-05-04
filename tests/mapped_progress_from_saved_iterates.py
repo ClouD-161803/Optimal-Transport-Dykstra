@@ -39,16 +39,16 @@ OUTPUT_DIR = os.path.join(
 SOLVER_LABEL = "fast"  # "fast" or "vanilla"
 NUM_DIMENSIONS = 2
 KR_DEGREE = 2
-PLOT_SIZE = 5.0
+PLOT_SIZE = 7.5
 PLOT_XLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 PLOT_YLIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE)
 
 # Optional explicit frame indices (in mapped sequence space). Set to None to disable.
-EXPLICIT_FRAME_INDICES: list[int] | None = [0, 1, 3, 4, 8, 10, 15, 20, 100, 300, 500]
+EXPLICIT_FRAME_INDICES: list[int] | None = [0, 3, 8, 10, 15, 20, 30, 80, 345, 400, 600]
 # Optional substring filter for selecting a specific run JSON by filename.s
 # Examples: "SEED=42", "TS=20260422-101530", "MODE=fast".
 # Keep as None to default to latest run.
-RUN_FILENAME_FILTER: str | None = "SEED=5432"
+RUN_FILENAME_FILTER: str | None = "SEED=1234"
 
 
 def _latest_full_run_json(path: str, filename_filter: str | None = None) -> str:
