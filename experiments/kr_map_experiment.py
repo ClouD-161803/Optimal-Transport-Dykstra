@@ -36,8 +36,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Run-mode settings
 RUN_SOLVER_MODE: str = "fast"  # options: "both", "vanilla", "fast", "benchmark"
-SAVE_FULL_RUN_ITERATES: bool = True
-SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = False
+SAVE_FULL_RUN_ITERATES: bool = False
+SAVE_DISTRIBUTION_SHIFT_MEDIA: bool = True
 ENFORCE_MATCHING: bool = False
 
 # Plot settings
@@ -51,12 +51,12 @@ X_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTION
 Y_LIM: tuple[float, float] | None = (-PLOT_SIZE, PLOT_SIZE) if PLOT_DISTRIBUTIONS else None
 
 # SEED = int(time.time() * 1000) % 1000000
-SEED: int = 5432
+SEED: int = 2222
 NUM_DIMENSIONS: int = 2
-NUM_PARTICLES: int = 1000
+NUM_PARTICLES: int = 500
 
 # Optimisation settings
-MAX_OUTER_ITER: int = 1000
+MAX_OUTER_ITER: int = 10000
 DYKSTRA_KWARGS: dict[str, Any] = {"track_error": False}
 GRADIENT_CLIP_VALUE: float = 10.0
 L1_REG: float = 0.0
@@ -67,9 +67,9 @@ MAX_INNER_ITERS: int = 10
 INEXACT_POWER: float = np.log(MAX_INNER_ITERS / BASE_INNER_ITER) / np.log(MAX_OUTER_ITER)
 
 # SGD
-BATCH_SIZE: int | None = 200
+BATCH_SIZE: int | None = 100
 RNG_SEED: int | None = SEED + 1 if BATCH_SIZE is not None else None
-LEARNING_RATE: float = 1e-1
+LEARNING_RATE: float = 2e-1
 LR_DECAY: float = 1e-2 if BATCH_SIZE is not None else 0.0
 
 # IHT
@@ -97,12 +97,12 @@ DATA_HALFSPACE_B: np.ndarray | None = None
 #     halfspace_A=DATA_HALFSPACE_A if "DATA_HALFSPACE_A" in globals() else None,
 #     halfspace_b=DATA_HALFSPACE_B if "DATA_HALFSPACE_B" in globals() else None,
 # )
-DATA_GENERATOR = DataGenerator(
-    shear_function=BoomerangShearFunction(),
-)
 # DATA_GENERATOR = DataGenerator(
-#     shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+#     shear_function=BoomerangShearFunction(),
 # )
+DATA_GENERATOR = DataGenerator(
+    shear_function=RoughLineShearFunction(sigma=LINE_SIGMA),
+)
 # DATA_GENERATOR = DataGenerator(
 #     shear_function=CubicShearFunction(strength=0.4),
 # )
