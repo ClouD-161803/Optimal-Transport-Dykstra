@@ -707,18 +707,27 @@ def save_distribution_shift_media_from_artifacts(
             solver_title_label = (
                 "vanilla Dykstra" if solver_label == "vanilla" else "fast-forward Dykstra"
             )
+            resolved_panel_titles = _resolve_single_solver_titles(
+                solver_label=solver_label,
+                panel_titles_both=panel_titles_both,
+                panel_titles_vanilla=panel_titles_vanilla,
+                panel_titles_fast=panel_titles_fast,
+            )
+            if resolved_panel_titles is None:
+                resolved_panel_titles = ("Reference", "Sheared", "Mapped")
+            else:
+                resolved_panel_titles = (
+                    "Reference",
+                    "Sheared",
+                    "Mapped",
+                )
             media_paths[solver_label] = plotter.save_kr_map_distribution_shift_animation(
                 normal_samples=reference_for_plot[:, :2],
                 synthetic_samples=target_for_plot[:, :2],
                 mapped_samples_sequence=np.asarray(mapped_sequence, dtype=float),
                 solver_label=solver_title_label,
                 outer_indices=outer_indices,
-                panel_titles=_resolve_single_solver_titles(
-                    solver_label=solver_label,
-                    panel_titles_both=panel_titles_both,
-                    panel_titles_vanilla=panel_titles_vanilla,
-                    panel_titles_fast=panel_titles_fast,
-                ),
+                panel_titles=resolved_panel_titles,
                 xlim=x_lim,
                 ylim=y_lim,
                 filename_prefix=_build_distribution_shift_filename_prefix(
@@ -728,6 +737,11 @@ def save_distribution_shift_media_from_artifacts(
                 fps=fps,
                 save_mp4=save_mp4,
                 save_gif=save_gif,
+                ramp_playback_speed=True,
+                start_speed=1.0,
+                end_speed=30.0,
+                speed_ramp_mode="exp",
+                target_duration_seconds=15.0,
             )
 
     return media_paths

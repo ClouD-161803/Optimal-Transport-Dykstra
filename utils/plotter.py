@@ -645,6 +645,11 @@ class DistributionPlotter(_BasePlotter):
         fps: int = 12,
         save_mp4: bool = True,
         save_gif: bool = True,
+        ramp_playback_speed: bool = False,
+        start_speed: float = 1.0,
+        end_speed: float = 10.0,
+        speed_ramp_mode: str = "exp",
+        target_duration_seconds: float | None = 15.0,
     ) -> dict[str, str]:
         """Save mapped-distribution shift animation as MP4 and/or GIF."""
         mapped_sequence = np.asarray(mapped_samples_sequence, dtype=float)
@@ -681,6 +686,36 @@ class DistributionPlotter(_BasePlotter):
             else "kr_map_distribution_shift"
         )
         effective_fps = max(int(fps), 1)
+        render_indices = list(range(num_frames))
+        if ramp_playback_speed and num_frames > 1:
+            render_indices = self._build_playback_ramp_indices(
+                num_frames=num_frames,
+                start_speed=start_speed,
+                end_speed=end_speed,
+                mode=speed_ramp_mode,
+            )
+            if target_duration_seconds is not None:
+                max_render_frames = max(
+                    2,
+                    int(round(effective_fps * max(float(target_duration_seconds), 1.0))),
+                )
+                if len(render_indices) > max_render_frames:
+                    keep_positions = np.linspace(
+                        0,
+                        len(render_indices) - 1,
+                        max_render_frames,
+                    )
+                    render_indices = [
+                        render_indices[int(round(pos))] for pos in keep_positions.tolist()
+                    ]
+                    render_indices = sorted(set(render_indices))
+                    if render_indices[0] != 0:
+                        render_indices[0] = 0
+                    if render_indices[-1] != (num_frames - 1):
+                        render_indices[-1] = num_frames - 1
+        mapped_sequence_render = mapped_sequence[render_indices, :, :]
+        outer_indices_render = [resolved_outer_indices[idx] for idx in render_indices]
+        num_render_frames = int(mapped_sequence_render.shape[0])
 
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         self._draw_distribution_panel(
@@ -721,8 +756,8 @@ class DistributionPlotter(_BasePlotter):
         mapped_ax = axes[2]
         mapped_style = self._resolve_style("mapped")
         mapped_scatter = mapped_ax.scatter(
-            mapped_sequence[0, :, 0],
-            mapped_sequence[0, :, 1],
+            mapped_sequence_render[0, :, 0],
+            mapped_sequence_render[0, :, 1],
             alpha=mapped_style.point_alpha,
             color=mapped_style.point_color,
             edgecolor=mapped_style.point_edge_color,
@@ -733,7 +768,7 @@ class DistributionPlotter(_BasePlotter):
         mapped_contours = None
         if draw_contours:
             xx, yy, zz = self._estimate_density_grid(
-                samples=mapped_sequence[0, :, :2],
+                samples=mapped_sequence_render[0, :, :2],
                 xlim=xlim,
                 ylim=ylim,
                 bins=contour_bins,
@@ -750,13 +785,34 @@ class DistributionPlotter(_BasePlotter):
                 contour_levels=contour_levels,
             )
 
+        def _remove_contours(contour_obj: Any | None) -> None:
+            if contour_obj is None:
+                return
+            collections = getattr(contour_obj, "collections", None)
+            if collections is not None:
+                for coll in list(collections):
+                    try:
+                        coll.remove()
+                    except Exception:
+                        pass
+                return
+            artists = getattr(contour_obj, "artists", None)
+            if artists is not None:
+                for art in list(artists):
+                    try:
+                        art.remove()
+                    except Exception:
+                        pass
+                return
+            try:
+                contour_obj.remove()
+            except Exception:
+                pass
+
         def _title_for_frame(frame_idx: int) -> str:
-            outer_idx = resolved_outer_indices[frame_idx]
-            if outer_idx < 0:
-                iter_label = "initial weights"
-            else:
-                iter_label = f"outer PGD iter {outer_idx}"
-            return f"{panel_titles[2]} ({iter_label})"
+            outer_idx = outer_indices_render[frame_idx]
+            display_iter = outer_idx + 1
+            return f"{panel_titles[2]} (PGD iter {display_iter})"
 
         self._style_axis(
             ax=mapped_ax,
@@ -771,13 +827,11 @@ class DistributionPlotter(_BasePlotter):
 
         def _update(frame_idx: int) -> tuple[Any, ...]:
             nonlocal mapped_contours
-            mapped_scatter.set_offsets(mapped_sequence[frame_idx, :, :2])
-            if mapped_contours is not None:
-                for collection in mapped_contours.collections:
-                    collection.remove()
+            mapped_scatter.set_offsets(mapped_sequence_render[frame_idx, :, :2])
+            _remove_contours(mapped_contours)
             if draw_contours:
                 xx, yy, zz = self._estimate_density_grid(
-                    samples=mapped_sequence[frame_idx, :, :2],
+                    samples=mapped_sequence_render[frame_idx, :, :2],
                     xlim=xlim,
                     ylim=ylim,
                     bins=contour_bins,
@@ -799,7 +853,7 @@ class DistributionPlotter(_BasePlotter):
         anim = animation.FuncAnimation(
             fig=fig,
             func=_update,
-            frames=num_frames,
+            frames=num_render_frames,
             interval=int(1000 / effective_fps),
             blit=False,
             repeat=True,
@@ -849,6 +903,47 @@ class DistributionPlotter(_BasePlotter):
             raise RuntimeError(f"Failed to save distribution shift animation ({detail}).")
 
         return saved_paths
+
+    @staticmethod
+    def _build_playback_ramp_indices(
+        num_frames: int,
+        start_speed: float,
+        end_speed: float,
+        mode: str = "exp",
+    ) -> list[int]:
+        """Build source-frame indices for constant-FPS accelerated playback."""
+        if num_frames <= 1:
+            return [0]
+
+        s0 = max(float(start_speed), 1e-6)
+        s1 = max(float(end_speed), s0)
+        if abs(s1 - s0) < 1e-12:
+            return list(range(num_frames))
+
+        last = num_frames - 1
+        indices: list[int] = [0]
+        pos = 0.0
+        mode_key = mode.strip().lower()
+
+        while pos < last:
+            u = pos / max(last, 1)
+            if mode_key == "linear":
+                speed = s0 + (s1 - s0) * u
+            else:
+                speed = s0 * ((s1 / s0) ** u)
+
+            step = max(speed, 1e-6)
+            pos = pos + step
+            next_idx = min(int(round(pos)), last)
+            if next_idx <= indices[-1]:
+                next_idx = min(indices[-1] + 1, last)
+            indices.append(next_idx)
+            if next_idx >= last:
+                break
+
+        if indices[-1] != last:
+            indices.append(last)
+        return indices
 
     def plot_distributions(
         self,
